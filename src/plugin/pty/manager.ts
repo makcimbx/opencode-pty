@@ -3,7 +3,13 @@ import { Terminal } from 'bun-pty'
 import { NotificationManager } from './notification-manager.ts'
 import { OutputManager } from './output-manager.ts'
 import { SessionLifecycleManager } from './session-lifecycle.ts'
-import type { PTYSessionInfo, ReadResult, SearchResult, SpawnOptions } from './types.ts'
+import type {
+  PTYSessionInfo,
+  ReadResult,
+  SearchResult,
+  SnapshotResult,
+  SpawnOptions,
+} from './types.ts'
 import { withSession } from './utils.ts'
 
 const proto = Terminal.prototype as unknown as { _startReadLoop?: (...args: unknown[]) => unknown }
@@ -147,6 +153,10 @@ class PTYManager {
       }),
       null
     )
+  }
+
+  snapshot(id: string): SnapshotResult | null {
+    return withSession(this.lifecycleManager, id, (session) => this.outputManager.snapshot(session), null)
   }
 
   kill(id: string, cleanup: boolean = false): boolean {

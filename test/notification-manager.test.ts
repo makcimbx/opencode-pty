@@ -2,6 +2,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { OpencodeClient } from '@opencode-ai/sdk'
 import { RingBuffer } from '../src/plugin/pty/buffer.ts'
 import { NotificationManager } from '../src/plugin/pty/notification-manager.ts'
+import { TerminalSnapshot } from '../src/plugin/pty/snapshot.ts'
 import type { PTYSession } from '../src/plugin/pty/types.ts'
 
 type PromptPayload = {
@@ -16,6 +17,7 @@ type PromptPayload = {
 
 function createSession(overrides: Partial<PTYSession> = {}): PTYSession {
   const buffer = new RingBuffer()
+  const snapshot = new TerminalSnapshot(120, 40)
   buffer.append('line 1\nline 2\n')
 
   return {
@@ -34,6 +36,7 @@ function createSession(overrides: Partial<PTYSession> = {}): PTYSession {
     timeoutSeconds: undefined,
     timedOut: false,
     buffer,
+    snapshot,
     process: null,
     ...overrides,
   }
