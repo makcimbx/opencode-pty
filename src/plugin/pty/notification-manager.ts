@@ -1,6 +1,28 @@
 import type { PTYSession } from './types.ts'
 import type { OpencodeClient } from '@opencode-ai/sdk'
+import { stripVTControlCharacters } from 'node:util'
 import { NOTIFICATION_LINE_TRUNCATE, NOTIFICATION_TITLE_TRUNCATE } from '../constants.ts'
+
+const OSC_SEQUENCE_REGEX = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g
+const CONTROL_CHARS_REGEX = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
+const WHITESPACE_REGEX = /\s+/g
+
+function sanitizeNotificationLine(line: string): string {
+  const sanitized = stripVTControlCharacters(line)
+    .replace(OSC_SEQUENCE_REGEX, '')
+    .replace(/\r|\n/g, ' ')
+    .replace(CONTROL_CHARS_REGEX, '')
+    .replace(WHITESPACE_REGEX, ' ')
+    .trim()
+
+  if (sanitized === '') {
+    return ''
+  }
+
+  return sanitized.length > NOTIFICATION_LINE_TRUNCATE
+    ? `${sanitized.slice(0, NOTIFICATION_LINE_TRUNCATE)}...`
+    : sanitized
+}
 
 export class NotificationManager {
   private client: OpencodeClient | null = null
@@ -61,10 +83,10 @@ export class NotificationManager {
         const bufferLines = session.buffer.read(i, 1)
         const line = bufferLines[0]
         if (line !== undefined && line.trim() !== '') {
-          lastLine =
-            line.length > NOTIFICATION_LINE_TRUNCATE
-              ? `${line.slice(0, NOTIFICATION_LINE_TRUNCATE)}...`
-              : line
+          lastLine = sanitizeNotificationLine(line)
+          if (lastLine === '') {
+            continue
+          }
           break
         }
       }
@@ -84,7 +106,7 @@ export class NotificationManager {
       `TimeoutSeconds: ${session.timeoutSeconds ?? 'none'}`,
       `Timed Out: ${session.timedOut ? 'yes' : 'no'}`,
       `Output Lines: ${lineCount}`,
-      `Last Line: ${lastLine}`,
+      ...(lastLine ? [`Last Line: ${lastLine}`] : []),
       '</pty_exited>',
       '',
     ]
