@@ -53,13 +53,15 @@ opencode
 
 ## Tools Provided
 
-| Tool        | Description                                                                 |
-| ----------- | --------------------------------------------------------------------------- |
-| `pty_spawn` | Create a new PTY session (command, args, workdir, env, title, notifyOnExit, timeoutSeconds) |
-| `pty_write` | Send input to a PTY (text, escape sequences like `\x03` for Ctrl+C)         |
-| `pty_read`  | Read output buffer with pagination and optional regex filtering             |
-| `pty_list`  | List all PTY sessions with status, PID, line count                          |
-| `pty_kill`  | Terminate a PTY, optionally cleanup the buffer                              |
+| Tool                 | Description                                                                 |
+| -------------------- | --------------------------------------------------------------------------- |
+| `pty_spawn`          | Create a new PTY session (command, args, workdir, env, title, notifyOnExit, timeoutSeconds) |
+| `pty_write`          | Send input to a PTY (text, escape sequences like `\x03` for Ctrl+C)        |
+| `pty_read`           | Read PTY output buffer as chat-safe text with pagination and regex filtering |
+| `pty_snapshot`       | Capture parsed terminal screen as clean text with cursor, size, and hash    |
+| `pty_snapshot_wait`  | Block until screen matches a regex or content stabilizes                    |
+| `pty_list`           | List all PTY sessions with status, PID, line count                          |
+| `pty_kill`           | Terminate a PTY, optionally cleanup the buffer                              |
 
 ## Slash Commands
 
@@ -224,6 +226,80 @@ Use pty_read to check the full output.
 ```
 
 This eliminates the need for polling—perfect for long-running processes like builds, tests, or deployment scripts. If the process fails (non-zero exit code), the notification will suggest using `pty_read` with the `pattern` parameter to search for errors.
+
+### Capture a clean terminal snapshot
+
+`pty_read` returns buffer lines in a chat-safe text form. Non-printable control bytes are escaped so the tool output does not break the UI, but TUI programs still remain hard to interpret because cursor movement and screen control sequences are only shown literally. For TUI apps (interactive UIs with cursor movement, colors, screen clearing), `pty_snapshot` solves this:
+
+```
+pty_snapshot: id="pty_a1b2c3d4"
+→ Returns clean screen text with cursor position, size, seq number, and content hash
+```
+
+### Track screen changes with seq-based diffs
+
+Every snapshot gets a monotonically increasing sequence number (`seq`) that increments only when the screen content actually changes. Pass `since` to get only the lines that changed:
+
+```
+pty_snapshot: id="pty_a1b2c3d4", since=5
+→ Returns only changed/added/removed lines since seq 5
+```
+
+### Wait for specific screen content
+
+Instead of polling in a loop, use `pty_snapshot_wait` to block until a condition is met:
+
+```
+pty_snapshot_wait: id="pty_a1b2c3d4", search="error|Error", timeout=30000
+→ Blocks until "error" or "Error" appears on screen, or times out
+
+pty_snapshot_wait: id="pty_a1b2c3d4", hashStableMs=2000, timeout=30000
+→ Blocks until screen content is unchanged for 2 seconds (useful for "wait until done")
+```
+
+Both parameters can be combined with `since` to get a diff on return.
+
+### Example: Debugging OpenCode itself
+
+One compelling use case is running OpenCode inside OpenCode to observe TUI behavior during development. The agent can interact with the inner instance, send prompts, open menus, and watch exactly how the screen updates:
+
+```
+# 1. Launch OpenCode as a background TUI process
+pty_spawn: command="opencode", args=["path/to/project"], title="Inner OpenCode"
+→ pty_abc123
+
+# 2. Wait for it to render, get initial screen state
+pty_snapshot_wait: id="pty_abc123", hashStableMs=2000, timeout=15000
+→ seq=2, shows OpenCode banner + input field
+
+# 3. Type a prompt and submit
+pty_write: id="pty_abc123", data="explain this codebase"
+pty_write: id="pty_abc123", data="\n"
+
+# 4. Watch the response stream in, frame by frame
+pty_snapshot_wait: id="pty_abc123", hashStableMs=300, since=2
+→ seq=15, diff shows partial response text appearing
+
+pty_snapshot_wait: id="pty_abc123", hashStableMs=300, since=15
+→ seq=28, more text streamed in
+
+pty_snapshot_wait: id="pty_abc123", hashStableMs=3000, since=28
+→ seq=46, response complete (stable for 3s)
+
+# 5. Open the command palette
+pty_write: id="pty_abc123", data="\x10"
+
+# 6. See all available commands
+pty_snapshot: id="pty_abc123", since=46
+→ Shows command palette overlay with menu items
+
+# 7. Toggle the sidebar
+pty_write: id="pty_abc123", data="show sidebar\r"
+pty_snapshot: id="pty_abc123", since=48
+→ Sidebar appears with session info, MCP connections, context usage
+```
+
+This works because `pty_snapshot` maintains a headless terminal emulator ([xterm.js](https://xtermjs.org/)) alongside each PTY session, producing the same parsed screen a human would see -- without any ANSI escape sequence noise.
 
 ## Configuration
 
