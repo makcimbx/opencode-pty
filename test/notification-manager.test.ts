@@ -2,7 +2,6 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { OpencodeClient } from '@opencode-ai/sdk'
 import { RingBuffer } from '../src/plugin/pty/buffer.ts'
 import { NotificationManager } from '../src/plugin/pty/notification-manager.ts'
-import { TerminalSnapshot } from '../src/plugin/pty/snapshot.ts'
 import type { PTYSession } from '../src/plugin/pty/types.ts'
 
 type PromptPayload = {
@@ -17,7 +16,6 @@ type PromptPayload = {
 
 function createSession(overrides: Partial<PTYSession> = {}): PTYSession {
   const buffer = new RingBuffer()
-  const snapshot = new TerminalSnapshot(120, 40)
   buffer.append('line 1\nline 2\n')
 
   return {
@@ -36,7 +34,7 @@ function createSession(overrides: Partial<PTYSession> = {}): PTYSession {
     timeoutSeconds: undefined,
     timedOut: false,
     buffer,
-    snapshot,
+    snapshot: {} as PTYSession['snapshot'],
     process: null,
     ...overrides,
   }
@@ -50,6 +48,17 @@ function createBufferSession(lines: string[], overrides: Partial<PTYSession> = {
   }
 
   return createSession({ buffer, ...overrides })
+}
+
+function getPromptPayload(
+  promptAsync: ReturnType<typeof mock<(_: PromptPayload) => Promise<void>>>
+): PromptPayload {
+  expect(promptAsync).toHaveBeenCalledTimes(1)
+
+  const payload = promptAsync.mock.calls[0]?.[0]
+  expect(payload).toBeDefined()
+
+  return payload as PromptPayload
 }
 
 describe('NotificationManager', () => {
@@ -122,14 +131,13 @@ describe('NotificationManager', () => {
 
     await manager.sendExitNotification(createSession({ parentAgent: 'agent-two' }), 0)
 
-    expect(promptAsync).toHaveBeenCalledTimes(1)
-    const payload = promptAsync.mock.calls[0]?.[0]
-    if (!payload) throw new Error('Expected a prompt payload')
+    const payload = getPromptPayload(promptAsync)
 
     expect(payload.path).toEqual({ id: 'parent-session-id' })
     expect(payload.body.agent).toBe('agent-two')
     expect(payload.body.parts).toHaveLength(1)
     expect(payload.body.parts[0]?.text).toContain('<pty_exited>')
+    expect(payload.body.parts[0]?.text).toMatch(/Elapsed: \d+ms|Elapsed: \d+\.\d{3}s/)
     expect(payload.body.parts[0]?.text).toContain('Use pty_read to check the full output.')
   })
 
@@ -141,9 +149,7 @@ describe('NotificationManager', () => {
 
     await manager.sendExitNotification(createSession({ parentAgent: undefined }), 1)
 
-    expect(promptAsync).toHaveBeenCalledTimes(1)
-    const payload = promptAsync.mock.calls[0]?.[0]
-    if (!payload) throw new Error('Expected a prompt payload')
+    const payload = getPromptPayload(promptAsync)
 
     expect(payload.path).toEqual({ id: 'parent-session-id' })
     expect(Object.hasOwn(payload.body, 'agent')).toBe(false)
@@ -232,5 +238,35 @@ describe('NotificationManager', () => {
 
     expect(text).not.toContain('Last Line:')
     expect(text).toContain('Output Lines: 2')
+  })
+
+  it('formats longer elapsed times with reduced precision', async () => {
+    const promptAsync = mock(async (_payload: PromptPayload) => {})
+    const manager = new NotificationManager()
+
+    manager.init({ session: { promptAsync } } as unknown as OpencodeClient)
+
+    await manager.sendExitNotification(
+      createSession({ createdAt: new Date(Date.now() - 65_432) }),
+      0
+    )
+
+    const payload = getPromptPayload(promptAsync)
+    expect(payload.body.parts[0]?.text).toContain('Elapsed: 65.4s')
+  })
+
+  it('formats very long elapsed times in minutes and seconds', async () => {
+    const promptAsync = mock(async (_payload: PromptPayload) => {})
+    const manager = new NotificationManager()
+
+    manager.init({ session: { promptAsync } } as unknown as OpencodeClient)
+
+    await manager.sendExitNotification(
+      createSession({ createdAt: new Date(Date.now() - 602_000) }),
+      0
+    )
+
+    const payload = getPromptPayload(promptAsync)
+    expect(payload.body.parts[0]?.text).toContain('Elapsed: 10m 2s')
   })
 })

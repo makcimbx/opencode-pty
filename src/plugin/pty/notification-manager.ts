@@ -24,6 +24,34 @@ function sanitizeNotificationLine(line: string): string {
     : sanitized
 }
 
+function getElapsedMs(session: PTYSession): number {
+  return Math.max(0, Date.now() - session.createdAt.getTime())
+}
+
+function formatElapsed(elapsedMs: number): string {
+  if (elapsedMs < 1_000) {
+    return `${Math.round(elapsedMs)}ms`
+  }
+
+  if (elapsedMs < 10_000) {
+    return `${(elapsedMs / 1_000).toFixed(3)}s`
+  }
+
+  if (elapsedMs < 60_000) {
+    return `${(elapsedMs / 1_000).toFixed(2)}s`
+  }
+
+  if (elapsedMs < 600_000) {
+    return `${(elapsedMs / 1_000).toFixed(1)}s`
+  }
+
+  const totalSeconds = Math.round(elapsedMs / 1_000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}m ${seconds}s`
+}
+
 export class NotificationManager {
   private client: OpencodeClient | null = null
 
@@ -37,7 +65,8 @@ export class NotificationManager {
     }
 
     try {
-      const message = this.buildExitNotification(session, exitCode)
+      const elapsedMs = getElapsedMs(session)
+      const message = this.buildExitNotification(session, exitCode, elapsedMs)
       let modelContext: {
         model?: { providerID: string; modelID: string }
         variant?: string
@@ -75,7 +104,7 @@ export class NotificationManager {
     }
   }
 
-  private buildExitNotification(session: PTYSession, exitCode: number): string {
+  private buildExitNotification(session: PTYSession, exitCode: number, elapsedMs: number): string {
     const lineCount = session.buffer.length
     let lastLine = ''
     if (lineCount > 0) {
@@ -97,11 +126,11 @@ export class NotificationManager {
       displayTitle.length > NOTIFICATION_TITLE_TRUNCATE
         ? `${displayTitle.slice(0, NOTIFICATION_TITLE_TRUNCATE)}...`
         : displayTitle
-
     const lines = [
       '<pty_exited>',
       `ID: ${session.id}`,
       `Description: ${truncatedTitle}`,
+      `Elapsed: ${formatElapsed(elapsedMs)}`,
       `Exit Code: ${exitCode}`,
       `TimeoutSeconds: ${session.timeoutSeconds ?? 'none'}`,
       `Timed Out: ${session.timedOut ? 'yes' : 'no'}`,
