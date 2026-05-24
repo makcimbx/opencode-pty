@@ -33,6 +33,7 @@ function createSession(overrides: Partial<PTYSession> = {}): PTYSession {
     notifyOnExit: true,
     timeoutSeconds: undefined,
     timedOut: false,
+    snapshotWaiters: 0,
     buffer,
     snapshot: {} as PTYSession['snapshot'],
     process: null,

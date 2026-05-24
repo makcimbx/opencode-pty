@@ -94,6 +94,7 @@ export class SessionLifecycleManager {
       notifyOnExit: opts.notifyOnExit ?? false,
       timeoutSeconds,
       timedOut: false,
+      snapshotWaiters: 0,
       buffer,
       snapshot,
       process: null, // will be set

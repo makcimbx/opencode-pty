@@ -22,6 +22,7 @@ export interface PTYSession {
   notifyOnExit: boolean
   timeoutSeconds?: number
   timedOut: boolean
+  snapshotWaiters: number
   buffer: RingBuffer
   snapshot: TerminalSnapshot
   process: IPty | null
