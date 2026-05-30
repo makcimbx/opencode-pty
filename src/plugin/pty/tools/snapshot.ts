@@ -16,8 +16,11 @@ export const ptySnapshot = tool({
       ),
   },
   async execute(args) {
-    if (args.since != null) {
-      const diff = manager.snapshotDiff(args.id, args.since)
+    const sinceSeq = args.since
+    const hasSince = sinceSeq != null && sinceSeq > 0
+
+    if (hasSince) {
+      const diff = manager.snapshotDiff(args.id, sinceSeq)
       if (!diff) {
         throw buildSessionNotFoundError(args.id)
       }
