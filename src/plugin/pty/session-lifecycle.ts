@@ -95,6 +95,7 @@ export class SessionLifecycleManager {
       timeoutSeconds,
       timedOut: false,
       snapshotWaiters: 0,
+      snapshotWaitDelivered: false,
       buffer,
       snapshot,
       process: null, // will be set

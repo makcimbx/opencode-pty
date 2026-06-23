@@ -66,6 +66,13 @@ export class NotificationManager {
 
     try {
       const elapsedMs = getElapsedMs(session)
+
+      // A snapshot_wait response is already a user-visible update for this PTY.
+      // Do not follow it with a second agent prompt for the same session id.
+      if (session.snapshotWaiters > 0 || session.snapshotWaitDelivered) {
+        return
+      }
+
       const message = this.buildExitNotification(session, exitCode, elapsedMs)
       let modelContext: {
         model?: { providerID: string; modelID: string }
