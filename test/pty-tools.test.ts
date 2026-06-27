@@ -441,7 +441,7 @@ describe('PTY Tools', () => {
       expect(manager.snapshotWait).toHaveBeenCalledWith('test-session-id', {
         search: /READY/,
         searchAbsent: undefined,
-        hashStableMs: undefined,
+        screenStableForMs: undefined,
         timeoutMs: 1000,
       })
       expect(result).toContain('result="exited"')
@@ -482,11 +482,56 @@ describe('PTY Tools', () => {
       expect(manager.snapshotWait).toHaveBeenCalledWith('test-session-id', {
         search: undefined,
         searchAbsent: /esc interrupt/,
-        hashStableMs: undefined,
+        screenStableForMs: undefined,
         timeoutMs: 1000,
       })
       expect(result).toContain('result="matched"')
       expect(result).toContain('ready')
+    })
+
+    it('should treat empty optional string conditions and non-positive screenStableForMs as omitted', async () => {
+      spyOn(manager, 'snapshotWait').mockResolvedValue({
+        id: 'test-session-id',
+        status: 'running',
+        matched: true,
+        exited: false,
+        waitedMs: 25,
+        state: {
+          size: { cols: 120, rows: 40 },
+          cursor: { row: 0, col: 0, visible: true },
+          text: 'ready',
+          contentHash: 'gone123',
+          seq: 2,
+          lines: ['ready'],
+        },
+      })
+
+      await ptySnapshotWait.execute(
+        {
+          id: 'test-session-id',
+          search: 'READY',
+          searchAbsent: '',
+          screenStableForMs: 0,
+          timeout: 1000,
+        },
+        {
+          sessionID: 'parent',
+          messageID: 'msg',
+          agent: 'agent',
+          abort: new AbortController().signal,
+          metadata: () => {},
+          ask: async () => {},
+          directory: '/tmp',
+          worktree: '/tmp',
+        }
+      )
+
+      expect(manager.snapshotWait).toHaveBeenCalledWith('test-session-id', {
+        search: /READY/,
+        searchAbsent: undefined,
+        screenStableForMs: undefined,
+        timeoutMs: 1000,
+      })
     })
 
     it('should right-align diff line numbers in changed-line output', async () => {
@@ -526,7 +571,7 @@ describe('PTY Tools', () => {
       })
 
       const result = await ptySnapshotWait.execute(
-        { id: 'test-session-id', hashStableMs: 500, timeout: 4000, since: 12 },
+        { id: 'test-session-id', screenStableForMs: 500, timeout: 4000, since: 12 },
         {
           sessionID: 'parent',
           messageID: 'msg',
