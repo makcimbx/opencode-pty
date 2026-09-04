@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { rmSync } from 'node:fs'
 
 // This test ensures `npm pack` (which triggers the package's `prepack` script)
 // produces a tarball that includes the built web UI (`dist/web/**`) and the
@@ -54,6 +55,6 @@ describe('npm pack structure', () => {
     expect(hasCssAsset).toBeTrue()
 
     // 4) Cleanup the pack file
-    await run(['rm', '-f', tgz as string])
+    rmSync(tgz as string, { force: true })
   }, 20000)
 })

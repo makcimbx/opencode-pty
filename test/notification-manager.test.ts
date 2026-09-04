@@ -107,6 +107,24 @@ describe('NotificationManager', () => {
     expect(Object.hasOwn(payload.body, 'variant')).toBe(false)
   })
 
+  it('does not inject exit notifications into child sessions', async () => {
+    const get = mock(async () => ({
+      data: {
+        parentID: 'root-session-id',
+        model: { providerID: 'openai', id: 'gpt-5.6-terra' },
+      },
+    }))
+    const promptAsync = mock(async (_payload: PromptPayload) => {})
+    const manager = new NotificationManager()
+
+    manager.init({ session: { get, promptAsync } } as unknown as OpencodeClient)
+
+    await manager.sendExitNotification(createSession(), 0)
+
+    expect(get).toHaveBeenCalledWith({ path: { id: 'parent-session-id' } })
+    expect(promptAsync).not.toHaveBeenCalled()
+  })
+
   it('sends the notification when reading the parent model fails', async () => {
     const get = mock(async () => {
       throw new Error('Session API unavailable')
@@ -194,7 +212,7 @@ describe('NotificationManager', () => {
       0
     )
 
-    const payload = promptAsync.mock.calls[0]![0]
+    const payload = getPromptPayload(promptAsync)
     const text = payload.body.parts[0]?.text ?? ''
 
     expect(text).toContain('Last Line: 19:40:47 backend.1 | warning status link')
@@ -214,7 +232,7 @@ describe('NotificationManager', () => {
       0
     )
 
-    const payload = promptAsync.mock.calls[0]![0]
+    const payload = getPromptPayload(promptAsync)
     const text = payload.body.parts[0]?.text ?? ''
 
     expect(text).toContain('Last Line: still here')
@@ -235,7 +253,7 @@ describe('NotificationManager', () => {
       0
     )
 
-    const payload = promptAsync.mock.calls[0]![0]
+    const payload = getPromptPayload(promptAsync)
     const text = payload.body.parts[0]?.text ?? ''
 
     expect(text).not.toContain('Last Line:')

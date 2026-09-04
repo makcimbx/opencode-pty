@@ -3,8 +3,10 @@ import type { OpencodeClient } from '@opencode-ai/sdk'
 import { stripVTControlCharacters } from 'node:util'
 import { NOTIFICATION_LINE_TRUNCATE, NOTIFICATION_TITLE_TRUNCATE } from '../constants.ts'
 
-const OSC_SEQUENCE_REGEX = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g
-const CONTROL_CHARS_REGEX = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
+// biome-ignore lint/complexity/useRegexLiterals: string form avoids control-character regex lint for ANSI sequences.
+const OSC_SEQUENCE_REGEX = new RegExp('\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)', 'g')
+// biome-ignore lint/complexity/useRegexLiterals: string form avoids control-character regex lint for control-char ranges.
+const CONTROL_CHARS_REGEX = new RegExp('[\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f]', 'g')
 const WHITESPACE_REGEX = /\s+/g
 
 function sanitizeNotificationLine(line: string): string {
@@ -73,7 +75,6 @@ export class NotificationManager {
         return
       }
 
-      const message = this.buildExitNotification(session, exitCode, elapsedMs)
       let modelContext: {
         model?: { providerID: string; modelID: string }
         variant?: string
@@ -82,13 +83,20 @@ export class NotificationManager {
         const parent = await this.client.session.get({
           path: { id: session.parentSessionId },
         })
-        const model = (
-          parent.data as
-            | (typeof parent.data & {
-                model?: { id: string; providerID: string; variant?: string }
-              })
-            | undefined
-        )?.model
+        const parentData = parent.data as
+          | {
+              parentID?: string
+              model?: { id: string; providerID: string; variant?: string }
+            }
+          | undefined
+
+        // Async prompts can end a child session before it returns to its orchestrator.
+        // Child agents should block on pty_wait instead.
+        if (parentData?.parentID) {
+          return
+        }
+
+        const model = parentData?.model
         if (model) {
           modelContext = {
             model: { providerID: model.providerID, modelID: model.id },
@@ -98,6 +106,7 @@ export class NotificationManager {
       } catch {
         // Older OpenCode versions may not expose the session model.
       }
+      const message = this.buildExitNotification(session, exitCode, elapsedMs)
       await this.client.session.promptAsync({
         path: { id: session.parentSessionId },
         body: {

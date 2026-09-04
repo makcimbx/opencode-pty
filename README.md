@@ -1,4 +1,4 @@
-# opencode-pty
+# @makcimbx/opencode-pty
 
 A plugin for [OpenCode](https://opencode.ai) that provides interactive PTY (pseudo-terminal) management, enabling the AI agent to run background processes, send interactive input, and read output on demand.
 
@@ -20,7 +20,11 @@ This plugin gives the agent full control over multiple terminal sessions, like t
 - **Interactive Input**: Send keystrokes, Ctrl+C, arrow keys, etc.
 - **Output Buffer**: Read output anytime with pagination (offset/limit)
 - **Pattern Filtering**: Search output using regex (like `grep`)
-- **Exit Notifications**: Get notified when processes finish (eliminates polling)
+- **Chat-safe Output**: Escapes terminal control bytes before returning buffer content
+- **Terminal Snapshots**: Renders TUI output through a headless xterm with seq-based diffs
+- **Reliable Waiting**: Wait for screen conditions or process exit without polling
+- **Exit Notifications**: Get notified when root-session processes finish
+- **Hard Timeouts**: Automatically stop runaway processes after a configured limit
 - **Permission Support**: Respects OpenCode's bash permission settings
 - **Session Lifecycle**: Sessions persist until explicitly killed
 - **Auto-cleanup**: PTYs are cleaned up when OpenCode sessions end
@@ -29,26 +33,32 @@ This plugin gives the agent full control over multiple terminal sessions, like t
 
 ## Setup
 
-Add the plugin to your [OpenCode config](https://opencode.ai/docs/config/):
+Until the npm package is published, clone the repository and install its dependencies:
+
+```bash
+git clone https://github.com/makcimbx/opencode-pty.git
+cd opencode-pty
+bun install
+```
+
+Then add the local entry point to your [OpenCode config](https://opencode.ai/docs/config/):
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-pty"]
+  "plugin": ["file:///absolute/path/to/opencode-pty/index.ts"]
 }
 ```
 
-That's it. OpenCode will automatically install the plugin on next run.
+Fully restart OpenCode after changing the plugin configuration.
 
 ## Updating
 
-OpenCode automatically checks for and installs plugin updates on startup. You don't need to do anything manually!
-
-If you ever need to force a clean reinstall, you can clear the cache:
+Pull updates and refresh dependencies in the checkout:
 
 ```bash
-rm -rf ~/.cache/opencode/node_modules/opencode-pty
-opencode
+git pull
+bun install
 ```
 
 ## Tools Provided
@@ -228,6 +238,8 @@ Use pty_read to check the full output.
 
 This eliminates the need for polling—perfect for long-running processes like builds, tests, or deployment scripts. If the process fails (non-zero exit code), the notification will suggest using `pty_read` with the `pattern` parameter to search for errors.
 
+Exit notifications are disabled automatically in child/subagent sessions because an asynchronous chat prompt can terminate the subagent response before it reaches the orchestrator. Use `pty_wait` in subagents instead.
+
 ### Capture a clean terminal snapshot
 
 `pty_read` returns buffer lines in a chat-safe text form. Non-printable control bytes are escaped so the tool output does not break the UI, but TUI programs still remain hard to interpret because cursor movement and screen control sequences are only shown literally. For TUI apps (interactive UIs with cursor movement, colors, screen clearing), `pty_snapshot` solves this:
@@ -388,7 +400,7 @@ This plugin respects OpenCode's [permission settings](https://opencode.ai/docs/p
 4. **Filter**: Optional regex pattern filters lines before pagination
 5. **Write**: Agent can send any input including escape sequences
 6. **Lifecycle**: Sessions track status (running/exited/killed), persist until cleanup
-7. **Notify**: When `notifyOnExit` is true, sends a message to the session when the process exits
+7. **Notify**: When `notifyOnExit` is true in a root session, sends a sanitized message when the process exits; child sessions use `pty_wait`
 8. **Web UI**: React frontend connects via WebSocket for real-time updates
 
 ## Session Lifecycle
@@ -410,7 +422,7 @@ Use `pty_kill` with `cleanup=true` to remove completely.
 ## Local Development
 
 ```bash
-git clone https://github.com/shekohex/opencode-pty.git
+git clone https://github.com/makcimbx/opencode-pty.git
 cd opencode-pty
 bun ci          # install packages from bun.lock
 bun lint        # Runs Biome linting checks
@@ -615,7 +627,7 @@ sequenceDiagram
     Note over PTY: Long-running process (dev server, tests, etc.)
     PTY-->>Manager: Process exits → exitCode
     deactivate PTY
-    alt notifyOnExit was true when spawned
+    alt notifyOnExit was true in a root session
         Manager->>Plugin: Triggers exit notification
         Plugin->>Chat: Sends formatted message via SDK<br><pty_exited><br>ID: pty_abc123<br>Exit: 0<br>Lines: 342<br>Last: Server running at http://localhost:5173<br></pty_exited>
         Chat-->>User: Notification appears in chat
@@ -639,3 +651,5 @@ Contributions are welcome! Please open an issue or submit a PR.
 
 - [OpenCode](https://opencode.ai) - The AI coding assistant this plugin extends
 - [bun-pty](https://github.com/nicksrandall/bun-pty) - Cross-platform PTY for Bun
+- [shekohex/opencode-pty](https://github.com/shekohex/opencode-pty) - Original plugin and process lifecycle features
+- [JosXa/opencode-pty](https://github.com/JosXa/opencode-pty) - Snapshot, output sanitization, and notification lifecycle improvements

@@ -79,9 +79,22 @@ class PTYManager {
   private lifecycleManager = new SessionLifecycleManager()
   private outputManager = new OutputManager()
   private notificationManager = new NotificationManager()
+  private client: OpencodeClient | null = null
 
   init(client: OpencodeClient): void {
+    this.client = client
     this.notificationManager.init(client)
+  }
+
+  async isChildSession(sessionId: string): Promise<boolean> {
+    if (!this.client) return false
+
+    try {
+      const session = await this.client.session.get({ path: { id: sessionId } })
+      return Boolean((session.data as { parentID?: string } | undefined)?.parentID)
+    } catch {
+      return false
+    }
   }
 
   clearAllSessions(): void {
@@ -158,10 +171,18 @@ class PTYManager {
   }
 
   snapshot(id: string): SnapshotResult | null {
-    return withSession(this.lifecycleManager, id, (session) => this.outputManager.snapshot(session), null)
+    return withSession(
+      this.lifecycleManager,
+      id,
+      (session) => this.outputManager.snapshot(session),
+      null
+    )
   }
 
-  snapshotDiff(id: string, sinceSeq: number): (SnapshotDiff & { id: string; status: PTYStatus }) | null {
+  snapshotDiff(
+    id: string,
+    sinceSeq: number
+  ): (SnapshotDiff & { id: string; status: PTYStatus }) | null {
     return withSession(
       this.lifecycleManager,
       id,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -54,13 +54,14 @@ describe('npm pack integration', () => {
 
     // Cleanup pack file
     if (packFile) {
-      await run(['rm', '-f', packFile])
+      rmSync(join(process.cwd(), packFile), { force: true })
     }
   })
 
   it('packs, installs, and serves assets correctly', async () => {
     // 1) Create temp workspace
     tempDir = mkdtempSync(join(tmpdir(), 'opencode-pty-'))
+    writeFileSync(join(tempDir, 'package.json'), JSON.stringify({ private: true }))
 
     // 2) Pack the package
     const pack = await run(['npm', 'pack'])
@@ -89,16 +90,16 @@ describe('npm pack integration', () => {
     )
 
     // Verify the package structure (compiled JS shipped in dist/)
-    const packageDir = join(tempDir, 'node_modules/opencode-pty')
+    const packageDir = join(tempDir, 'node_modules/@makcimbx/opencode-pty')
     expect(existsSync(join(packageDir, 'dist/src/plugin/pty/manager.js'))).toBe(true)
     expect(existsSync(join(packageDir, 'dist/web/index.html'))).toBe(true)
-    const portFile = join('/tmp', 'test-server-port-0.txt')
+    const portFile = join(tmpdir(), 'test-server-port-0.txt')
     if (await Bun.file(portFile).exists()) {
       await Bun.file(portFile).delete()
     }
     serverProcess = Bun.spawn(['bun', 'run', 'test/start-server.ts'], {
       cwd: tempDir,
-      env: { ...process.env, NODE_ENV: 'test' },
+      env: { ...process.env, NODE_ENV: 'test', CREATE_TEST_SESSION: 'false' },
       stdout: 'inherit',
       stderr: 'inherit',
     })

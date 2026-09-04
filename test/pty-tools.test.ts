@@ -14,7 +14,11 @@ describe('PTY Tools', () => {
     mock.restore()
   })
   describe('ptySpawn', () => {
+    let childSession = false
+
     beforeEach(() => {
+      childSession = false
+      spyOn(manager, 'isChildSession').mockImplementation(async () => childSession)
       spyOn(manager, 'spawn').mockImplementation((opts) => ({
         id: 'test-session-id',
         title: opts.title || 'Test Session',
@@ -127,6 +131,41 @@ describe('PTY Tools', () => {
         'Never use sleep plus `pty_read` loops to check completion for this session.'
       )
       expect(result).toContain('</system_reminder>')
+    })
+
+    it('disables exit notifications for child sessions and directs them to pty_wait', async () => {
+      childSession = true
+      const ctx = {
+        sessionID: 'child-session-id',
+        messageID: 'msg-child',
+        agent: 'subagent',
+        abort: new AbortController().signal,
+        metadata: () => {},
+        ask: async () => {},
+        directory: '/tmp',
+        worktree: '/tmp',
+      }
+
+      const result = await ptySpawn.execute(
+        {
+          command: 'npm',
+          args: ['run', 'build'],
+          description: 'Build from subagent',
+          notifyOnExit: true,
+        },
+        ctx
+      )
+
+      expect(manager.isChildSession).toHaveBeenCalledWith('child-session-id')
+      expect(manager.spawn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parentSessionId: 'child-session-id',
+          notifyOnExit: false,
+        })
+      )
+      expect(result).toContain('NotifyOnExit: false')
+      expect(result).toContain('Exit notifications are disabled for child sessions')
+      expect(result).toContain('Use `pty_wait`')
     })
   })
 

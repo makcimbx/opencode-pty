@@ -12,6 +12,13 @@ const NOTIFY_ON_EXIT_INSTRUCTIONS = [
   `</system_reminder>`,
 ].join('\n')
 
+const CHILD_SESSION_INSTRUCTIONS = [
+  `<system_reminder>`,
+  `Exit notifications are disabled for child sessions because an asynchronous prompt can end the subagent response early.`,
+  `Use \`pty_wait\` to wait for process completion without polling or interrupting the subagent.`,
+  `</system_reminder>`,
+].join('\n')
+
 export const ptySpawn = tool({
   description: DESCRIPTION,
   args: {
@@ -47,6 +54,8 @@ export const ptySpawn = tool({
     }
 
     const sessionId = ctx.sessionID
+    const notificationSuppressed =
+      args.notifyOnExit === true && (await manager.isChildSession(sessionId))
     const info = manager.spawn({
       command: args.command,
       args: args.args,
@@ -56,7 +65,7 @@ export const ptySpawn = tool({
       description: args.description,
       parentSessionId: sessionId,
       parentAgent: ctx.agent,
-      notifyOnExit: args.notifyOnExit,
+      notifyOnExit: notificationSuppressed ? false : args.notifyOnExit,
       timeoutSeconds: args.timeoutSeconds,
     })
 
@@ -71,7 +80,11 @@ export const ptySpawn = tool({
       `NotifyOnExit: ${info.notifyOnExit}`,
       `TimeoutSeconds: ${info.timeoutSeconds ?? 'none'}`,
       `</pty_spawned>`,
-      ...(info.notifyOnExit ? ['', NOTIFY_ON_EXIT_INSTRUCTIONS] : []),
+      ...(notificationSuppressed
+        ? ['', CHILD_SESSION_INSTRUCTIONS]
+        : info.notifyOnExit
+          ? ['', NOTIFY_ON_EXIT_INSTRUCTIONS]
+          : []),
     ].join('\n')
 
     return output

@@ -14,6 +14,7 @@ Usage:
 - Use `title` to give the session a human-readable name
 - The `description` parameter is required: a clear, concise 5-10 word description
 - Use `notifyOnExit` to receive a notification when the process exits (default: false)
+- Exit notifications are disabled in child/subagent sessions because asynchronous prompts can end a subagent response early; use `pty_wait` there instead
 - Use `timeoutSeconds` to auto-kill the PTY after a fixed number of seconds
 - Do not set `timeoutSeconds` by default for sessions that are meant to keep running, such as dev servers, watch modes, local APIs, or REPLs. Only add a timeout for those when the user explicitly asks for one.
 - Prefer setting `timeoutSeconds` for long-running commands that are still expected to finish on their own, such as builds, unit test suites, end-to-end tests, migrations, or other commands where you are waiting for a result.
@@ -28,6 +29,7 @@ After spawning, use:
 - `pty_read` to read output from the PTY
 - `pty_list` to see all active PTY sessions
 - `pty_kill` to terminate the PTY
+- `pty_wait` to wait for the process to exit without polling
 
 Exit Notifications:
 When `notifyOnExit` is true, you will receive a message when the process exits containing:
@@ -38,6 +40,7 @@ When `notifyOnExit` is true, you will receive a message when the process exits c
 
 This is useful for long-running processes where you want to be notified when they complete
 instead of polling with `pty_read`.
+- In child/subagent sessions, `notifyOnExit` is disabled automatically; call `pty_wait` so the tool invocation remains active until completion
 - Completion signal is the future `<pty_exited>` message
 - If you only need to know whether the command finished, do not call `pty_read`; wait for `<pty_exited>`
 - Never use sleep plus `pty_read` loops to check completion
