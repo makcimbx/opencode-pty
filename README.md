@@ -33,33 +33,20 @@ This plugin gives the agent full control over multiple terminal sessions, like t
 
 ## Setup
 
-Until the npm package is published, clone the repository and install its dependencies:
-
-```bash
-git clone https://github.com/makcimbx/opencode-pty.git
-cd opencode-pty
-bun install
-```
-
-Then add the local entry point to your [OpenCode config](https://opencode.ai/docs/config/):
+Add the published package to your [OpenCode config](https://opencode.ai/docs/config/):
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["file:///absolute/path/to/opencode-pty/index.ts"]
+  "plugin": ["@makcimbx/opencode-pty"]
 }
 ```
 
-Fully restart OpenCode after changing the plugin configuration.
+OpenCode installs the package from npm at startup. Fully restart OpenCode after changing the plugin configuration.
 
 ## Updating
 
-Pull updates and refresh dependencies in the checkout:
-
-```bash
-git pull
-bun install
-```
+Restart OpenCode to get the latest version. If the cached package does not refresh, remove `~/.cache/opencode/node_modules/@makcimbx/opencode-pty` and restart OpenCode.
 
 ## Tools Provided
 
