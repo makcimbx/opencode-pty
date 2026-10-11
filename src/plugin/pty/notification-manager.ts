@@ -1,5 +1,5 @@
 import type { PTYSession } from './types.ts'
-import type { OpencodeClient } from '@opencode-ai/sdk'
+import type { SessionClient } from '../types.ts'
 import { stripVTControlCharacters } from 'node:util'
 import { NOTIFICATION_LINE_TRUNCATE, NOTIFICATION_TITLE_TRUNCATE } from '../constants.ts'
 
@@ -55,9 +55,9 @@ function formatElapsed(elapsedMs: number): string {
 }
 
 export class NotificationManager {
-  private client: OpencodeClient | null = null
+  private client: SessionClient | null = null
 
-  init(client: OpencodeClient): void {
+  init(client: SessionClient): void {
     this.client = client
   }
 

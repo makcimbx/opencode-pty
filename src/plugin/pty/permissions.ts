@@ -12,7 +12,21 @@ interface PermissionConfig {
 let _client: PluginClient | null = null
 let _directory: string | null = null
 
+export interface PermissionChecks {
+  command(command: string, args: string[]): Promise<void>
+  workdir(workdir: string): Promise<void>
+}
+
+let _checks: PermissionChecks | null = null
+
+export function initPermissionChecks(checks: PermissionChecks): void {
+  _checks = checks
+  _client = null
+  _directory = null
+}
+
 export function initPermissions(client: PluginClient, directory: string): void {
+  _checks = null
   _client = client
   _directory = directory
 }
@@ -58,6 +72,7 @@ async function handleAskPermission(commandLine: string): Promise<never> {
 }
 
 export async function checkCommandPermission(command: string, args: string[]): Promise<void> {
+  if (_checks) return _checks.command(command, args)
   const config = await getPermissionConfig()
   const bashPerms = config.bash
 
@@ -89,6 +104,7 @@ export async function checkCommandPermission(command: string, args: string[]): P
 }
 
 export async function checkWorkdirPermission(workdir: string): Promise<void> {
+  if (_checks) return _checks.workdir(workdir)
   if (!_directory) {
     return
   }

@@ -1,4 +1,4 @@
-import type { OpencodeClient } from '@opencode-ai/sdk'
+import type { SessionClient } from '../types.ts'
 import { Terminal } from 'bun-pty'
 import { NotificationManager } from './notification-manager.ts'
 import { OutputManager } from './output-manager.ts'
@@ -79,9 +79,9 @@ class PTYManager {
   private lifecycleManager = new SessionLifecycleManager()
   private outputManager = new OutputManager()
   private notificationManager = new NotificationManager()
-  private client: OpencodeClient | null = null
+  private client: SessionClient | null = null
 
-  init(client: OpencodeClient): void {
+  init(client: SessionClient): void {
     this.client = client
     this.notificationManager.init(client)
   }
@@ -211,6 +211,6 @@ class PTYManager {
 
 export const manager = new PTYManager()
 
-export function initManager(opcClient: OpencodeClient): void {
+export function initManager(opcClient: SessionClient): void {
   manager.init(opcClient)
 }

@@ -1,14 +1,7 @@
 import type { PluginContext, PluginResult } from './plugin/types.ts'
 import { initManager, manager } from './plugin/pty/manager.ts'
 import { initPermissions } from './plugin/pty/permissions.ts'
-import { ptySpawn } from './plugin/pty/tools/spawn.ts'
-import { ptyWrite } from './plugin/pty/tools/write.ts'
-import { ptyRead } from './plugin/pty/tools/read.ts'
-import { ptyList } from './plugin/pty/tools/list.ts'
-import { ptyKill } from './plugin/pty/tools/kill.ts'
-import { ptySnapshot } from './plugin/pty/tools/snapshot.ts'
-import { ptySnapshotWait } from './plugin/pty/tools/snapshot-wait.ts'
-import { ptyWait } from './plugin/pty/tools/wait.ts'
+import { ptyTools } from './plugin/pty/tools/index.ts'
 import { PTYServer } from './web/server/server.ts'
 import open from 'open'
 
@@ -48,16 +41,7 @@ export const PTYPlugin = async ({ client, directory }: PluginContext): Promise<P
         })
       }
     },
-    tool: {
-      pty_spawn: ptySpawn,
-      pty_write: ptyWrite,
-      pty_read: ptyRead,
-      pty_snapshot: ptySnapshot,
-      pty_snapshot_wait: ptySnapshotWait,
-      pty_list: ptyList,
-      pty_kill: ptyKill,
-      pty_wait: ptyWait,
-    },
+    tool: ptyTools,
     config: async (input) => {
       if (!input.command) {
         input.command = {}

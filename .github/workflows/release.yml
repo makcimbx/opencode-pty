@@ -95,6 +95,16 @@ jobs:
             echo ""
             echo "Add to your \`opencode.json\`:"
             echo ""
+            echo "#### OpenCode 2.0"
+            echo ""
+            printf '%s\n' '```json'
+            printf '%s\n' '{'
+            printf '%s\n' '  "plugins": [{ "package": "@makcimbx/opencode-pty" }]'
+            printf '%s\n' '}'
+            printf '%s\n' '```'
+            echo ""
+            echo "#### OpenCode V1 (1.18.29 or newer)"
+            echo ""
             printf '%s\n' '```json'
             printf '%s\n' '{'
             printf '%s\n' '  "$schema": "https://opencode.ai/config.json",'
