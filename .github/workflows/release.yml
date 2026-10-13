@@ -12,6 +12,10 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
 jobs:
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
@@ -35,19 +39,18 @@ jobs:
           set -euo pipefail
           CURRENT_VERSION=$(bun -e 'import pkg from "./package.json"; console.log(pkg.version)')
           echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-          if git rev-parse HEAD^ >/dev/null 2>&1; then
-            PREVIOUS_VERSION=$(bun -e "const { execSync } = require('node:child_process'); try { const data = execSync('git show HEAD^:package.json', { stdio: ['ignore', 'pipe', 'ignore'] }); const json = JSON.parse(data.toString()); if (json && typeof json.version === 'string') { process.stdout.write(json.version); } } catch (error) {}")
-            PREVIOUS_VERSION=${PREVIOUS_VERSION//$'\n'/}
-          else
-            PREVIOUS_VERSION=""
-          fi
-          echo "previous_version=$PREVIOUS_VERSION" >> "$GITHUB_OUTPUT"
-          if [ "$CURRENT_VERSION" = "$PREVIOUS_VERSION" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-          git fetch --tags --force
+          # A CI fix after the version bump must not prevent the pending release.
+          # Consult the registry, and also resume GitHub release creation if npm
+          # publishing succeeded in an earlier run but the following step failed.
+          bun -e '
+            import pkg from "./package.json";
+            const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}`);
+            if (!response.ok) throw new Error(`npm registry returned ${response.status}`);
+            const registry = await response.json();
+            console.log(`published=${Object.hasOwn(registry.versions ?? {}, pkg.version)}`);
+            console.log(`previous_version=${registry["dist-tags"]?.latest ?? ""}`);
+          ' >> "$GITHUB_OUTPUT"
+          git fetch --tags
           if git tag -l "v$CURRENT_VERSION" | grep -q "v$CURRENT_VERSION"; then
             echo "tag_exists=true" >> "$GITHUB_OUTPUT"
           else
@@ -55,11 +58,11 @@ jobs:
           fi
 
       - name: Install dependencies
-        if: steps.determine.outputs.changed == 'true' && steps.determine.outputs.tag_exists == 'false'
+        if: steps.determine.outputs.published == 'false' && steps.determine.outputs.tag_exists == 'false'
         run: bun ci
 
       - name: Generate release notes
-        if: steps.determine.outputs.changed == 'true' && steps.determine.outputs.tag_exists == 'false'
+        if: steps.determine.outputs.tag_exists == 'false'
         id: release_notes
         run: |
           set -euo pipefail
@@ -131,24 +134,25 @@ jobs:
           } >>"$GITHUB_OUTPUT"
 
       - name: Setup Node
-        if: steps.determine.outputs.changed == 'true' && steps.determine.outputs.tag_exists == 'false'
+        if: steps.determine.outputs.published == 'false' && steps.determine.outputs.tag_exists == 'false'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Publish to npm
-        if: steps.determine.outputs.changed == 'true' && steps.determine.outputs.tag_exists == 'false'
+        if: steps.determine.outputs.published == 'false' && steps.determine.outputs.tag_exists == 'false'
         run: npm publish --access public --provenance
 
       - name: Create GitHub release
-        if: steps.determine.outputs.changed == 'true' && steps.determine.outputs.tag_exists == 'false'
+        if: steps.determine.outputs.tag_exists == 'false'
         run: |
           NOTES_FILE=$(mktemp)
           cat >"$NOTES_FILE" <<'EOF'
           ${{ steps.release_notes.outputs.body }}
           EOF
           gh release create "v${{ steps.determine.outputs.current_version }}" \
+            --target "$(git rev-parse HEAD)" \
             --title "v${{ steps.determine.outputs.current_version }}" \
             --notes-file "$NOTES_FILE"
         env:

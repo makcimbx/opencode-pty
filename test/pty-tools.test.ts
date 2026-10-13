@@ -1,14 +1,26 @@
-import { describe, it, expect, beforeEach, mock, spyOn, afterAll } from 'bun:test'
-import { ptySpawn } from '../src/plugin/pty/tools/spawn.ts'
-import { ptyRead } from '../src/plugin/pty/tools/read.ts'
-import { ptyList } from '../src/plugin/pty/tools/list.ts'
-import { ptySnapshot } from '../src/plugin/pty/tools/snapshot.ts'
-import { ptySnapshotWait } from '../src/plugin/pty/tools/snapshot-wait.ts'
-import { ptyWait } from '../src/plugin/pty/tools/wait.ts'
+import { afterAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { resolve } from 'node:path'
 import { RingBuffer } from '../src/plugin/pty/buffer.ts'
 import { manager, sessionUpdateCallbacks } from '../src/plugin/pty/manager.ts'
-import { resolve } from 'node:path'
+import { ptyRuntime } from '../src/plugin/pty/runtime.ts'
+import { ptyList } from '../src/plugin/pty/tools/list.ts'
+import { ptyRead } from '../src/plugin/pty/tools/read.ts'
+import { ptySnapshot } from '../src/plugin/pty/tools/snapshot.ts'
+import { ptySnapshotWait } from '../src/plugin/pty/tools/snapshot-wait.ts'
+import { ptySpawn } from '../src/plugin/pty/tools/spawn.ts'
+import { ptyWait } from '../src/plugin/pty/tools/wait.ts'
 import type { PTYSessionInfo } from '../src/plugin/pty/types.ts'
+
+// Tool formatting tests must not inherit permission state from other suites.
+const executeSpawn: typeof ptySpawn.execute = (args, ctx) =>
+  ptyRuntime.run(
+    {
+      manager,
+      directory: ctx.directory,
+      permissions: { command: async () => {}, workdir: async () => {} },
+    },
+    () => ptySpawn.execute(args, ctx)
+  )
 
 describe('PTY Tools', () => {
   afterAll(() => {
@@ -53,7 +65,7 @@ describe('PTY Tools', () => {
         description: 'Test session',
       }
 
-      const result = await ptySpawn.execute(args, ctx)
+      const result = await executeSpawn(args, ctx)
 
       expect(manager.spawn).toHaveBeenCalledWith({
         command: 'echo',
@@ -99,7 +111,7 @@ describe('PTY Tools', () => {
         timeoutSeconds: 60,
       }
 
-      const result = await ptySpawn.execute(args, ctx)
+      const result = await executeSpawn(args, ctx)
 
       expect(manager.spawn).toHaveBeenCalledWith({
         command: 'node',
@@ -147,7 +159,7 @@ describe('PTY Tools', () => {
         worktree: '/tmp',
       }
 
-      const result = await ptySpawn.execute(
+      const result = await executeSpawn(
         {
           command: 'npm',
           args: ['run', 'build'],

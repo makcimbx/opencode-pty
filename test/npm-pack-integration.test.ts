@@ -105,7 +105,13 @@ describe('npm pack integration', () => {
     const assetName = jsAsset?.replace('package/dist/web/assets/', '')
 
     // 3) Install in temp workspace
-    const install = await run(['bun', 'install', tgzPath], { cwd: tempDir })
+    // Bun's Windows resolver intermittently stalls here in the full suite.
+    // Verify an npm installation on Windows; the packaged runtime still uses Bun.
+    const installCommand =
+      process.platform === 'win32'
+        ? ['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund', tgzPath]
+        : ['bun', 'install', tgzPath]
+    const install = await run(installCommand, { cwd: tempDir })
     expect(install.code).toBe(0)
 
     // Copy the server script to tempDir
