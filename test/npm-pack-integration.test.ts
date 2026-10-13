@@ -112,8 +112,11 @@ describe('npm pack integration', () => {
         })
       )
     )
+    writeFileSync(join(tempDir, 'package.json'), JSON.stringify({ private: true, overrides }))
+    const peerCheckDir = join(tempDir, 'peer-check')
+    mkdirSync(peerCheckDir)
     writeFileSync(
-      join(tempDir, 'package.json'),
+      join(peerCheckDir, 'package.json'),
       JSON.stringify({ private: true, overrides, dependencies })
     )
 
@@ -131,6 +134,25 @@ describe('npm pack integration', () => {
     const jsAsset = files.find((f) => /package\/dist\/web\/assets\/[^/]+\.js$/.test(f))
     expect(jsAsset).toBeDefined()
     const assetName = jsAsset?.replace('package/dist/web/assets/', '')
+
+    // Strictly resolve the native host graph, without downloading/unpacking its
+    // renderer/compiler binaries again just to exercise the server entrypoint.
+    const peerCheck = await run(
+      [
+        'npm',
+        'install',
+        '--package-lock-only',
+        '--ignore-scripts',
+        '--no-audit',
+        '--no-fund',
+        tgzPath,
+      ],
+      { cwd: peerCheckDir, timeoutMs: 240000 }
+    )
+    expect(peerCheck.code).toBe(0)
+    if (peerCheck.code !== 0) throw new Error(peerCheck.stderr)
+    const resolved = await Bun.file(join(peerCheckDir, 'package-lock.json')).json()
+    expect(resolved.packages['node_modules/solid-js'].version).toBe(dependencies['solid-js'])
 
     // 3) Install in temp workspace
     // Use npm's strict peer resolver, like OpenCode's installer, on every platform.
