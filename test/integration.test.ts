@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { manager } from '../src/plugin/pty/manager.ts'
-import { ManagedTestClient, ManagedTestServer } from './utils.ts'
+import {
+  ManagedTestClient,
+  ManagedTestServer,
+  authenticatedFetch as fetch,
+  testCommand,
+  testWebSocket,
+} from './utils.ts'
 import { PTYServer } from '../src/web/server/server.ts'
 import type { WSMessageServerSessionUpdate } from '../src/web/shared/types.ts'
 import type { PTYSessionInfo } from '../src/plugin/pty/types.ts'
@@ -49,8 +55,7 @@ describe('Web Server Integration', () => {
       managedTestClient1.send({
         type: 'spawn',
         title: title1,
-        command: 'echo',
-        args: ['Session 1'],
+        ...testCommand('echo', ['Session 1']),
         description: 'Multi-session test 1',
         parentSessionId: managedTestServer.sessionId,
         subscribe: true,
@@ -59,8 +64,7 @@ describe('Web Server Integration', () => {
       managedTestClient2.send({
         type: 'spawn',
         title: title2,
-        command: 'echo',
-        args: ['Session 2'],
+        ...testCommand('echo', ['Session 2']),
         description: 'Multi-session test 2',
         parentSessionId: managedTestServer.sessionId,
         subscribe: true,
@@ -97,8 +101,7 @@ describe('Web Server Integration', () => {
 
       const session = manager.spawn({
         title: testSessionId,
-        command: 'echo',
-        args: ['test'],
+        ...testCommand('echo', ['test']),
         description: 'Error test session',
         parentSessionId: managedTestServer.sessionId,
       })
@@ -115,7 +118,8 @@ describe('Web Server Integration', () => {
       )
 
       const result = await response.json()
-      expect(result).toHaveProperty('success')
+      expect(response.status).toBe(400)
+      expect(result).toHaveProperty('error')
 
       const errorPromise = new Promise((resolve) => {
         managedTestClient.errorCallbacks.push((message) => {
@@ -145,8 +149,7 @@ describe('Web Server Integration', () => {
 
       const session = manager.spawn({
         title: testSessionId,
-        command: 'sleep',
-        args: ['10'],
+        ...testCommand('sleep', ['10']),
         description: 'Sleep test session',
         parentSessionId: managedTestServer.sessionId,
       })
@@ -175,8 +178,7 @@ describe('Web Server Integration', () => {
 
       const session = manager.spawn({
         title,
-        command: 'echo',
-        args: ['performance test'],
+        ...testCommand('echo', ['performance test']),
         description: 'Performance test',
         parentSessionId: managedTestServer.sessionId,
       })
@@ -198,13 +200,12 @@ describe('Web Server Integration', () => {
       const sessionId = crypto.randomUUID()
       manager.spawn({
         title: sessionId,
-        command: 'echo',
-        args: ['cleanup test'],
+        ...testCommand('echo', ['cleanup test']),
         description: 'Cleanup test',
         parentSessionId: sessionId,
       })
 
-      const ws = new WebSocket(ptyServer.getWsUrl())
+      const ws = testWebSocket(ptyServer.getWsUrl(), ptyServer.auth.token)
       await new Promise((resolve) => {
         ws.onopen = resolve
       })

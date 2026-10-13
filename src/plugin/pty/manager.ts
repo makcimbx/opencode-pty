@@ -13,6 +13,7 @@ import type {
   SpawnOptions,
 } from './types.ts'
 import { withSession } from './utils.ts'
+import { currentRuntime } from './runtime.ts'
 
 const proto = Terminal.prototype as unknown as { _startReadLoop?: (...args: unknown[]) => unknown }
 
@@ -30,18 +31,19 @@ type SessionUpdateCallback = (session: PTYSessionInfo) => void
 export const sessionUpdateCallbacks: SessionUpdateCallback[] = []
 
 export function registerSessionUpdateCallback(callback: SessionUpdateCallback) {
-  sessionUpdateCallbacks.push(callback)
+  getManager().sessionUpdateCallbacks.push(callback)
 }
 
 export function removeSessionUpdateCallback(callback: SessionUpdateCallback) {
-  const index = sessionUpdateCallbacks.indexOf(callback)
+  const callbacks = getManager().sessionUpdateCallbacks
+  const index = callbacks.indexOf(callback)
   if (index !== -1) {
-    sessionUpdateCallbacks.splice(index, 1)
+    callbacks.splice(index, 1)
   }
 }
 
-function notifySessionUpdate(session: PTYSessionInfo) {
-  for (const callback of [...sessionUpdateCallbacks]) {
+function notifySessionUpdate(session: PTYSessionInfo, callbacks: SessionUpdateCallback[]) {
+  for (const callback of [...callbacks]) {
     try {
       callback(session)
     } catch {
@@ -55,18 +57,23 @@ type RawOutputCallback = (session: PTYSessionInfo, rawData: string) => void
 export const rawOutputCallbacks: RawOutputCallback[] = []
 
 export function registerRawOutputCallback(callback: RawOutputCallback): void {
-  rawOutputCallbacks.push(callback)
+  getManager().rawOutputCallbacks.push(callback)
 }
 
 export function removeRawOutputCallback(callback: RawOutputCallback): void {
-  const index = rawOutputCallbacks.indexOf(callback)
+  const callbacks = getManager().rawOutputCallbacks
+  const index = callbacks.indexOf(callback)
   if (index !== -1) {
-    rawOutputCallbacks.splice(index, 1)
+    callbacks.splice(index, 1)
   }
 }
 
-function notifyRawOutput(session: PTYSessionInfo, rawData: string): void {
-  for (const callback of rawOutputCallbacks) {
+function notifyRawOutput(
+  session: PTYSessionInfo,
+  rawData: string,
+  callbacks: RawOutputCallback[]
+): void {
+  for (const callback of [...callbacks]) {
     try {
       callback(session, rawData)
     } catch {
@@ -75,11 +82,22 @@ function notifyRawOutput(session: PTYSessionInfo, rawData: string): void {
   }
 }
 
-class PTYManager {
+export class PTYManager {
+  private disposed = false
+  constructor(
+    readonly sessionUpdateCallbacks: SessionUpdateCallback[] = [],
+    readonly rawOutputCallbacks: RawOutputCallback[] = []
+  ) {}
   private lifecycleManager = new SessionLifecycleManager()
   private outputManager = new OutputManager()
   private notificationManager = new NotificationManager()
   private client: SessionClient | null = null
+
+  private canAccess(id: string): boolean {
+    const runtime = currentRuntime()
+    const owner = runtime?.manager === this ? runtime.sessionID : undefined
+    return !owner || this.lifecycleManager.getSession(id)?.parentSessionId === owner
+  }
 
   init(client: SessionClient): void {
     this.client = client
@@ -98,27 +116,35 @@ class PTYManager {
   }
 
   clearAllSessions(): void {
-    this.lifecycleManager.clearAllSessions()
+    for (const session of this.lifecycleManager.listSessions()) this.kill(session.id, true)
+  }
+
+  dispose(): void {
+    this.disposed = true
+    this.clearAllSessions()
   }
 
   spawn(opts: SpawnOptions): PTYSessionInfo {
+    if (this.disposed) throw new Error('PTY manager has been disposed')
+    currentRuntime()?.signal?.throwIfAborted()
     const session = this.lifecycleManager.spawn(
       opts,
       (session, data) => {
-        notifyRawOutput(this.lifecycleManager.toInfo(session), data)
+        notifyRawOutput(this.lifecycleManager.toInfo(session), data, this.rawOutputCallbacks)
       },
       async (session, exitCode) => {
-        notifySessionUpdate(this.lifecycleManager.toInfo(session))
+        notifySessionUpdate(this.lifecycleManager.toInfo(session), this.sessionUpdateCallbacks)
         if (session?.notifyOnExit) {
           await this.notificationManager.sendExitNotification(session, exitCode || 0)
         }
       }
     )
-    notifySessionUpdate(session)
+    notifySessionUpdate(session, this.sessionUpdateCallbacks)
     return session
   }
 
   write(id: string, data: string): boolean {
+    if (!this.canAccess(id)) return false
     return withSession(
       this.lifecycleManager,
       id,
@@ -128,6 +154,7 @@ class PTYManager {
   }
 
   read(id: string, offset: number = 0, limit?: number): ReadResult | null {
+    if (!this.canAccess(id)) return null
     return withSession(
       this.lifecycleManager,
       id,
@@ -137,6 +164,7 @@ class PTYManager {
   }
 
   search(id: string, pattern: RegExp, offset: number = 0, limit?: number): SearchResult | null {
+    if (!this.canAccess(id)) return null
     return withSession(
       this.lifecycleManager,
       id,
@@ -146,10 +174,14 @@ class PTYManager {
   }
 
   list(): PTYSessionInfo[] {
-    return this.lifecycleManager.listSessions().map((s) => this.lifecycleManager.toInfo(s))
+    return this.lifecycleManager
+      .listSessions()
+      .filter((session) => this.canAccess(session.id))
+      .map((session) => this.lifecycleManager.toInfo(session))
   }
 
   get(id: string): PTYSessionInfo | null {
+    if (!this.canAccess(id)) return null
     return withSession(
       this.lifecycleManager,
       id,
@@ -159,6 +191,7 @@ class PTYManager {
   }
 
   getRawBuffer(id: string): { raw: string; byteLength: number } | null {
+    if (!this.canAccess(id)) return null
     return withSession(
       this.lifecycleManager,
       id,
@@ -171,6 +204,7 @@ class PTYManager {
   }
 
   snapshot(id: string): SnapshotResult | null {
+    if (!this.canAccess(id)) return null
     return withSession(
       this.lifecycleManager,
       id,
@@ -183,6 +217,7 @@ class PTYManager {
     id: string,
     sinceSeq: number
   ): (SnapshotDiff & { id: string; status: PTYStatus }) | null {
+    if (!this.canAccess(id)) return null
     return withSession(
       this.lifecycleManager,
       id,
@@ -195,21 +230,49 @@ class PTYManager {
     id: string,
     condition: WaitCondition
   ): Promise<(WaitResult & { id: string; status: string }) | null> {
+    if (!this.canAccess(id)) return null
     const session = this.lifecycleManager.getSession(id)
     if (!session) return null
     return this.outputManager.snapshotWait(session, condition)
   }
 
   kill(id: string, cleanup: boolean = false): boolean {
-    return this.lifecycleManager.kill(id, cleanup)
+    if (!this.canAccess(id)) return false
+    const session = cleanup ? this.get(id) : null
+    const success = this.lifecycleManager.kill(id, cleanup)
+    if (success && session)
+      notifySessionUpdate(
+        {
+          ...session,
+          status:
+            session.status === 'running' || session.status === 'killing'
+              ? 'killed'
+              : session.status,
+          exitAt: session.exitAt ?? new Date().toISOString(),
+        },
+        this.sessionUpdateCallbacks
+      )
+    return success
+  }
+
+  async snapshotText(id: string): Promise<string | null> {
+    if (!this.canAccess(id)) return null
+    const session = this.lifecycleManager.getSession(id)
+    return session ? session.snapshot.getSettledText() : null
   }
 
   cleanupBySession(parentSessionId: string): void {
-    this.lifecycleManager.cleanupBySession(parentSessionId)
+    for (const session of this.lifecycleManager.listSessions()) {
+      if (session.parentSessionId === parentSessionId) this.kill(session.id, true)
+    }
   }
 }
 
-export const manager = new PTYManager()
+export const manager = new PTYManager(sessionUpdateCallbacks, rawOutputCallbacks)
+
+export function getManager(): PTYManager {
+  return currentRuntime()?.manager ?? manager
+}
 
 export function initManager(opcClient: SessionClient): void {
   manager.init(opcClient)

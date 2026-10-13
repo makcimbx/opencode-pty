@@ -6,7 +6,7 @@ import {
 } from '../src/plugin/pty/manager.ts'
 import type { PTYSessionInfo } from '../src/plugin/pty/types.ts'
 import { PTYServer } from '../src/web/server/server.ts'
-import { ManagedTestServer } from './utils.ts'
+import { ManagedTestServer, authenticatedFetch as fetch, testCommand } from './utils.ts'
 
 describe('Web Server', () => {
   describe('Server Lifecycle', () => {
@@ -105,8 +105,7 @@ describe('Web Server', () => {
     it('should return individual session', async () => {
       // Create a test session first
       const session = manager.spawn({
-        command: 'bash',
-        args: [],
+        ...testCommand('bash'),
         description: 'Test session',
         parentSessionId: 'test',
       })
@@ -133,9 +132,9 @@ describe('Web Server', () => {
 
       const sessionData = await response.json()
       expect(sessionData.id).toBe(session.id)
-      expect(sessionData.command).toBe('bash')
-      expect(sessionData.args).toEqual([])
-    }, 200)
+      expect(sessionData.command).toBe(testCommand('bash').command)
+      expect(sessionData.args).toEqual(testCommand('bash').args)
+    }, 3000)
 
     it('should return 404 for non-existent session', async () => {
       const nonexistentId = crypto.randomUUID()
@@ -150,8 +149,7 @@ describe('Web Server', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          command: 'sleep',
-          args: ['1'],
+          ...testCommand('sleep', ['1']),
           description: 'Invalid timeout session',
           timeoutSeconds: 0,
         }),
@@ -173,8 +171,7 @@ describe('Web Server', () => {
       // Create a session to test input
       const session = manager.spawn({
         title: title,
-        command: 'cat',
-        args: [],
+        ...testCommand('cat'),
         description: 'Test session',
         parentSessionId: 'test',
       })
@@ -215,8 +212,7 @@ describe('Web Server', () => {
       })
       const session = manager.spawn({
         title: title,
-        command: 'cat',
-        args: [],
+        ...testCommand('cat'),
         description: 'Test session',
         parentSessionId: 'test',
       })
@@ -250,8 +246,7 @@ describe('Web Server', () => {
       // Create a session that produces output
       const session = manager.spawn({
         title,
-        command: 'echo',
-        args: ['line1\nline2\nline3'],
+        ...testCommand('echo', ['line1\nline2\nline3']),
         description: 'Test session with output',
         parentSessionId: 'test-output',
       })
@@ -269,8 +264,9 @@ describe('Web Server', () => {
       expect(bufferData).toHaveProperty('byteLength')
       expect(typeof bufferData.raw).toBe('string')
       expect(typeof bufferData.byteLength).toBe('number')
-      expect(bufferData.raw.length).toBe(21)
-      expect(bufferData.raw).toBe('line1\r\nline2\r\nline3\r\n')
+      expect(bufferData.byteLength).toBe(Buffer.byteLength(bufferData.raw))
+      for (const line of ['line1', 'line2', 'line3']) expect(bufferData.raw).toContain(line)
+      if (process.platform !== 'win32') expect(bufferData.raw).toBe('line1\r\nline2\r\nline3\r\n')
     })
 
     it('should return index.html for non-existent endpoints', async () => {

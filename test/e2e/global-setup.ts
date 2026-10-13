@@ -3,7 +3,7 @@ import { spawnSync } from 'bun'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const ROOT = path.resolve(__dirname, '..')
+const ROOT = path.resolve(__dirname, '../..')
 const DIST_HTML = path.join(ROOT, 'dist/web/index.html')
 const INPUT_DIRS = [
   path.join(ROOT, 'src/web/client'),

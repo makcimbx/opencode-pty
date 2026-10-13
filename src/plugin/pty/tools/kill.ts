@@ -1,5 +1,5 @@
 import { tool } from '@opencode-ai/plugin'
-import { manager } from '../manager.ts'
+import { getManager } from '../manager.ts'
 import { buildSessionNotFoundError } from '../utils.ts'
 import DESCRIPTION from './kill.txt'
 
@@ -13,6 +13,7 @@ export const ptyKill = tool({
       .describe('If true, removes the session and frees the buffer (default: false)'),
   },
   async execute(args) {
+    const manager = getManager()
     const session = manager.get(args.id)
     if (!session) {
       throw buildSessionNotFoundError(args.id)

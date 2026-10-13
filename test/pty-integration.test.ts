@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { manager } from '../src/plugin/pty/manager.ts'
 import { ptySnapshotWait } from '../src/plugin/pty/tools/snapshot-wait.ts'
-import { ManagedTestClient, ManagedTestServer } from './utils.ts'
+import {
+  ManagedTestClient,
+  ManagedTestServer,
+  authenticatedFetch as fetch,
+  testCommand,
+} from './utils.ts'
 import type { WSMessageServerSessionUpdate } from '../src/web/shared/types.ts'
 import type { PTYSessionInfo } from '../src/plugin/pty/types.ts'
 
@@ -64,8 +69,7 @@ describe('PTY Manager Integration', () => {
       managedTestClient.send({
         type: 'spawn',
         title,
-        command: 'echo',
-        args: ['test output'],
+        ...testCommand('echo', ['test output']),
         description: 'Test session',
         parentSessionId: managedTestServer.sessionId,
         subscribe: true,
@@ -110,8 +114,7 @@ describe('PTY Manager Integration', () => {
       managedTestClient1.send({
         type: 'spawn',
         title: title1,
-        command: 'echo',
-        args: ['output from session 1'],
+        ...testCommand('echo', ['output from session 1']),
         description: 'Session 1',
         parentSessionId: managedTestServer.sessionId,
         subscribe: true,
@@ -121,8 +124,7 @@ describe('PTY Manager Integration', () => {
       managedTestClient2.send({
         type: 'spawn',
         title: title2,
-        command: 'echo',
-        args: ['output from session 2'],
+        ...testCommand('echo', ['output from session 2']),
         description: 'Session 2',
         parentSessionId: managedTestServer.sessionId,
         subscribe: true,
@@ -144,8 +146,7 @@ describe('PTY Manager Integration', () => {
       const title = crypto.randomUUID()
       const session = manager.spawn({
         title,
-        command: 'sh',
-        args: ['-c', 'exit 0'],
+        ...testCommand('sh', ['-c', 'exit 0']),
         description: 'Snapshot wait exit regression',
         parentSessionId: managedTestServer.sessionId,
       })
@@ -177,8 +178,7 @@ describe('PTY Manager Integration', () => {
       const title = crypto.randomUUID()
       const session = manager.spawn({
         title,
-        command: 'sh',
-        args: ['-c', 'exit 0'],
+        ...testCommand('sh', ['-c', 'exit 0']),
         description: 'Snapshot wait notified exit regression',
         parentSessionId: managedTestServer.sessionId,
         notifyOnExit: true,
@@ -231,8 +231,7 @@ describe('PTY Manager Integration', () => {
       const title = crypto.randomUUID()
       const session = manager.spawn({
         title,
-        command: 'sh',
-        args: ['-c', 'sleep 1; exit 0'],
+        ...testCommand('sh', ['-c', 'sleep 1; exit 0']),
         description: 'Wait+exit duplicate-delivery regression',
         parentSessionId: managedTestServer.sessionId,
         notifyOnExit: true,
@@ -294,7 +293,7 @@ describe('PTY Manager Integration', () => {
       managedTestClient.send({
         type: 'spawn',
         title,
-        command: 'node',
+        command: process.execPath,
         args: ['-e', "console.log('test')"],
         description: 'Test Node.js session',
         parentSessionId: managedTestServer.sessionId,
@@ -312,7 +311,7 @@ describe('PTY Manager Integration', () => {
       const testSession = sessions.find((s) => s.id === sessionInfo.session.id)
       expect(testSession).toBeDefined()
       if (!testSession) return
-      expect(testSession.command).toBe('node')
+      expect(testSession.command).toBe(process.execPath)
       expect(testSession.args).toEqual(['-e', "console.log('test')"])
       expect(testSession.status).toBeDefined()
       expect(typeof testSession.pid).toBe('number')
@@ -337,8 +336,7 @@ describe('PTY Manager Integration', () => {
       managedTestClient.send({
         type: 'spawn',
         title,
-        command: 'echo',
-        args: ['lifecycle test'],
+        ...testCommand('echo', ['lifecycle test']),
         description: 'Lifecycle test session',
         parentSessionId: managedTestServer.sessionId,
         subscribe: true,
@@ -383,8 +381,7 @@ describe('PTY Manager Integration', () => {
       managedTestClient.send({
         type: 'spawn',
         title,
-        command: 'sleep',
-        args: ['10'],
+        ...testCommand('sleep', ['10']),
         description: 'Kill test session',
         parentSessionId: managedTestServer.sessionId,
         subscribe: true,
@@ -433,8 +430,7 @@ describe('PTY Manager Integration', () => {
       managedTestClient.send({
         type: 'spawn',
         title,
-        command: 'sleep',
-        args: ['10'],
+        ...testCommand('sleep', ['10']),
         description: 'Timed session',
         parentSessionId: managedTestServer.sessionId,
         subscribe: true,

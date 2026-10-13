@@ -1,6 +1,8 @@
 import { OpencodeClient } from '@opencode-ai/sdk'
 import { initManager } from '../../src/plugin/pty/manager.ts'
 import { PTYServer } from '../../src/web/server/server.ts'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
 initManager(new OpencodeClient())
 
@@ -14,13 +16,20 @@ if (process.env.NODE_ENV === 'test') {
   if (!server.server.url) {
     throw new Error('Server URL not available. File an issue if you need this feature.')
   }
-  await Bun.write(`/tmp/test-server-port-${workerIndex}.txt`, server.server.url.href)
+  await Bun.write(
+    process.env.TEST_SERVER_FILE ?? join(tmpdir(), `test-server-port-${workerIndex}.json`),
+    JSON.stringify({
+      baseURL: server.server.url.origin,
+      token: server.auth.token,
+      cookieName: server.auth.cookieName,
+    })
+  )
 }
 
 // Health check for test mode
 if (process.env.NODE_ENV === 'test') {
   try {
-    const response = await fetch(`${server.server.url}/api/sessions`)
+    const response = await fetch(`${server.server.url.origin}/health`)
     if (!response.ok) {
       console.error('Server health check failed')
       process.exit(1)

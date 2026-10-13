@@ -3,6 +3,8 @@ import { test as base, type WorkerInfo } from '@playwright/test'
 
 import { createApiClient } from '../../src/web/shared/api-client.ts'
 import { ManagedTestClient } from '../utils'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 async function waitForServer(url: string, timeoutMs = 15000): Promise<void> {
   const start = Date.now()
@@ -24,7 +26,7 @@ type TestFixtures = {
   wsClient: ManagedTestClient
 }
 type WorkerFixtures = {
-  server: { baseURL: string; port: number }
+  server: { baseURL: string; port: number; token: string; cookieName: string }
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
@@ -32,7 +34,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     // biome-ignore lint/correctness/noEmptyPattern: required empty pattern for Playwright fixture
     async ({}, fixtureUse, workerInfo: WorkerInfo) => {
       const workerIndex = workerInfo.workerIndex
-      const portFilePath = `/tmp/test-server-port-${workerIndex}.txt`
+      const portFilePath = join(tmpdir(), `pty-e2e-${process.pid}-${workerIndex}.json`)
 
       // Clean up old port file from previous test runs
       try {
@@ -46,6 +48,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         env: {
           ...process.env,
           TEST_WORKER_INDEX: workerInfo.workerIndex.toString(),
+          TEST_SERVER_FILE: portFilePath,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -58,80 +61,49 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         console.error(`[W${workerIndex} ERR] ${data}`)
       })
 
-      proc.on('exit', (_code, _signal) => {})
-
-      proc.stderr?.on('data', (data) => {
-        console.error(`[W${workerIndex} ERR] ${data}`)
-      })
-
-      proc.on('exit', (_code, _signal) => {})
-
       try {
         // Wait for server to write port file
-        await new Promise<void>((resolve) => {
-          const checkInterval = setInterval(() => {
-            try {
-              Bun.file(portFilePath)
-                .exists()
-                .then((exists) => {
-                  if (exists) {
-                    clearInterval(checkInterval)
-                    resolve()
-                  }
-                })
-            } catch {
-              // ignore errors
-            }
-          }, 100)
-        })
-
-        // Read the actual URL from port file
-        const serverURLText = await Bun.file(portFilePath).text()
-        const serverURL = serverURLText.trim()
-
-        // Parse URL to extract port number
-        const urlMatch = serverURL.match(/http:\/\/(?:127\.0\.0\.1|\[::1\]):(\d+)/)
-        if (!urlMatch || !urlMatch[1]) {
-          throw new Error(`Invalid port file format: ${serverURL}`)
+        const deadline = Date.now() + 15000
+        while (!(await Bun.file(portFilePath).exists())) {
+          if (proc.exitCode !== null || proc.signalCode !== null || Date.now() >= deadline)
+            throw new Error('Test server startup failed')
+          await Bun.sleep(100)
         }
-        const port = parseInt(urlMatch[1], 10)
-        const baseURL = serverURL.includes('[::1]')
-          ? `http://[::1]:${port}`
-          : `http://127.0.0.1:${port}`
-
-        await waitForServer(baseURL, 15000)
+        const { baseURL, token, cookieName } = (await Bun.file(
+          portFilePath
+        ).json()) as WorkerFixtures['server']
+        const port = Number(new URL(baseURL).port)
+        await waitForServer(`${baseURL}/health`, 15000)
 
         // Clear any leftover sessions from previous test runs
         try {
-          const apiClient = createApiClient(baseURL)
+          const apiClient = createApiClient(baseURL, { Authorization: `Bearer ${token}` })
           await apiClient.sessions.clear()
         } catch (error) {
           // Ignore clear errors during startup
           console.log(`[Worker ${workerIndex}] Could not clear sessions during startup: ${error}`)
         }
 
-        await fixtureUse({ baseURL, port })
+        await fixtureUse({ baseURL, port, token, cookieName })
       } catch (error) {
         console.error(`[Worker ${workerIndex}] Failed to start server: ${error}`)
         throw error
       } finally {
         // Ensure process is killed
-        if (!proc.killed) {
+        if (proc.exitCode === null && proc.signalCode === null) {
+          const exited = new Promise<void>((done) => proc.once('exit', () => done()))
           proc.kill('SIGTERM')
-          // Wait a bit, then force kill if still running
-          setTimeout(() => {
-            if (!proc.killed) {
+          const timer = setTimeout(() => {
+            if (proc.exitCode === null && proc.signalCode === null) {
               proc.kill('SIGKILL')
             }
           }, 2000)
+          await exited
+          clearTimeout(timer)
         }
-        await new Promise((resolve) => {
-          if (proc.killed) {
-            resolve(void 0)
-          } else {
-            proc.on('exit', resolve)
-          }
-        })
+        await Bun.file(portFilePath)
+          .delete()
+          .catch(() => {})
       }
     },
     { scope: 'worker', auto: true },
@@ -140,7 +112,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // Auto fixture that clears sessions before every test
   autoCleanup: [
     async ({ server }, fixtureUse) => {
-      const api = createApiClient(server.baseURL)
+      const api = createApiClient(server.baseURL, { Authorization: `Bearer ${server.token}` })
       try {
         await api.sessions.clear()
       } catch (error) {
@@ -152,19 +124,28 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   api: async ({ server }, fixtureUse) => {
-    const api = createApiClient(server.baseURL)
+    const api = createApiClient(server.baseURL, { Authorization: `Bearer ${server.token}` })
     await fixtureUse(api)
   },
 
   // WebSocket client fixture for event-driven testing
   wsClient: async ({ server }, fixtureUse) => {
     const wsUrl = `${server.baseURL.replace(/^http/, 'ws')}/ws`
-    await using client = await ManagedTestClient.create(wsUrl)
+    await using client = await ManagedTestClient.create(wsUrl, server.token)
     await fixtureUse(client)
   },
 
   // Extend page fixture to automatically navigate to server URL and wait for readiness
   page: async ({ page, server }, fixtureUse) => {
+    await page.context().addCookies([
+      {
+        name: server.cookieName,
+        value: server.token,
+        url: server.baseURL,
+        httpOnly: true,
+        sameSite: 'Strict',
+      },
+    ])
     await page.goto(server.baseURL)
     await page.waitForLoadState('networkidle')
     await fixtureUse(page)

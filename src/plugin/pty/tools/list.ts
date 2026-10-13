@@ -1,5 +1,5 @@
 import { tool } from '@opencode-ai/plugin'
-import { manager } from '../manager.ts'
+import { getManager } from '../manager.ts'
 import { formatSessionInfo } from '../formatters.ts'
 import DESCRIPTION from './list.txt'
 
@@ -7,7 +7,7 @@ export const ptyList = tool({
   description: DESCRIPTION,
   args: {},
   async execute() {
-    const sessions = manager.list()
+    const sessions = getManager().list()
 
     if (sessions.length === 0) {
       return '<pty_list>\nNo active PTY sessions.\n</pty_list>'

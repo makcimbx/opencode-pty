@@ -7,6 +7,7 @@ import { ptySnapshotWait } from '../src/plugin/pty/tools/snapshot-wait.ts'
 import { ptyWait } from '../src/plugin/pty/tools/wait.ts'
 import { RingBuffer } from '../src/plugin/pty/buffer.ts'
 import { manager, sessionUpdateCallbacks } from '../src/plugin/pty/manager.ts'
+import { resolve } from 'node:path'
 import type { PTYSessionInfo } from '../src/plugin/pty/types.ts'
 
 describe('PTY Tools', () => {
@@ -60,7 +61,7 @@ describe('PTY Tools', () => {
         description: 'Test session',
         parentSessionId: 'parent-session-id',
         parentAgent: 'test-agent',
-        workdir: undefined,
+        workdir: resolve('/tmp'),
         env: undefined,
         title: undefined,
         notifyOnExit: undefined,
@@ -103,7 +104,7 @@ describe('PTY Tools', () => {
       expect(manager.spawn).toHaveBeenCalledWith({
         command: 'node',
         args: ['script.js'],
-        workdir: '/home/user',
+        workdir: resolve('/home/user'),
         env: { NODE_ENV: 'test' },
         title: 'My Node Session',
         description: 'Running Node.js script',
@@ -114,7 +115,7 @@ describe('PTY Tools', () => {
       })
 
       expect(result).toContain('Title: My Node Session')
-      expect(result).toContain('Workdir: /home/user')
+      expect(result).toContain(`Workdir: ${resolve('/home/user')}`)
       expect(result).toContain('Command: node script.js')
       expect(result).toContain('PID: 12345')
       expect(result).toContain('Status: running')
@@ -484,6 +485,7 @@ describe('PTY Tools', () => {
         searchAbsent: undefined,
         screenStableForMs: undefined,
         timeoutMs: 1000,
+        signal: expect.any(AbortSignal),
       })
       expect(result).toContain('result="exited"')
       expect(result).toContain('status="exited"')
@@ -525,6 +527,7 @@ describe('PTY Tools', () => {
         searchAbsent: /esc interrupt/,
         screenStableForMs: undefined,
         timeoutMs: 1000,
+        signal: expect.any(AbortSignal),
       })
       expect(result).toContain('result="matched"')
       expect(result).toContain('ready')
@@ -572,6 +575,7 @@ describe('PTY Tools', () => {
         searchAbsent: undefined,
         screenStableForMs: undefined,
         timeoutMs: 1000,
+        signal: expect.any(AbortSignal),
       })
     })
 

@@ -1,6 +1,6 @@
 import { tool } from '@opencode-ai/plugin'
 import { formatSnapshotDiffLines } from '../formatters.ts'
-import { manager } from '../manager.ts'
+import { getManager } from '../manager.ts'
 import { buildSessionNotFoundError } from '../utils.ts'
 import DESCRIPTION from './snapshot.txt'
 
@@ -16,6 +16,7 @@ export const ptySnapshot = tool({
       ),
   },
   async execute(args) {
+    const manager = getManager()
     const sinceSeq = args.since
     const hasSince = sinceSeq != null && sinceSeq > 0
 

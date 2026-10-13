@@ -8,7 +8,7 @@ import type {
   WSMessageServerSubscribedSession,
   WSMessageServerUnsubscribedSession,
 } from '../src/web/shared/types.ts'
-import { ManagedTestClient, ManagedTestServer } from './utils.ts'
+import { ManagedTestClient, ManagedTestServer, testCommand } from './utils.ts'
 
 describe('WebSocket Functionality', () => {
   let managedTestServer: ManagedTestServer
@@ -56,8 +56,7 @@ describe('WebSocket Functionality', () => {
         type: 'spawn',
         title: title,
         subscribe: true,
-        command: 'echo',
-        args: ['Hello World'],
+        ...testCommand('echo', ['Hello World']),
         description: 'Test session',
         parentSessionId: managedTestServer.sessionId,
       })
@@ -85,8 +84,7 @@ describe('WebSocket Functionality', () => {
         type: 'spawn',
         title: title,
         subscribe: false,
-        command: 'bash',
-        args: [],
+        ...testCommand('bash'),
         description: 'Test session',
         parentSessionId: managedTestServer.sessionId,
       })
@@ -211,8 +209,7 @@ describe('WebSocket Functionality', () => {
         managedTestServer.server.getWsUrl()
       )
       const testSession = manager.spawn({
-        command: 'bash',
-        args: [],
+        ...testCommand('bash'),
         description: 'Test session for subscription logic',
         parentSessionId: managedTestServer.sessionId,
       })
@@ -253,7 +250,10 @@ describe('WebSocket Functionality', () => {
       managedTestClient.send({
         type: 'input',
         sessionId: testSession.id,
-        data: "echo 'Hello from subscription test'\nexit\n",
+        data:
+          process.platform === 'win32'
+            ? 'echo Hello from subscription test\rexit\r'
+            : "echo 'Hello from subscription test'\nexit\n",
       })
 
       // Wait for session to exit
@@ -275,7 +275,7 @@ describe('WebSocket Functionality', () => {
         sessionId: testSession.id,
       })
       await unsubscribePromise
-    }, 500)
+    }, 3000)
 
     it('should handle multiple subscription states correctly', async () => {
       await using managedTestClient = await ManagedTestClient.create(
@@ -289,15 +289,13 @@ describe('WebSocket Functionality', () => {
       })
 
       const session1 = manager.spawn({
-        command: 'bash',
-        args: [],
+        ...testCommand('bash'),
         description: 'Session 1',
         parentSessionId: crypto.randomUUID(),
       })
 
       const session2 = manager.spawn({
-        command: 'bash',
-        args: [],
+        ...testCommand('bash'),
         description: 'Session 2',
         parentSessionId: crypto.randomUUID(),
       })

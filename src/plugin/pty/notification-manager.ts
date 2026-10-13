@@ -27,7 +27,7 @@ function sanitizeNotificationLine(line: string): string {
 }
 
 function getElapsedMs(session: PTYSession): number {
-  return Math.max(0, Date.now() - session.createdAt.getTime())
+  return Math.max(0, (session.exitAt?.getTime() ?? Date.now()) - session.createdAt.getTime())
 }
 
 function formatElapsed(elapsedMs: number): string {
@@ -110,6 +110,7 @@ export class NotificationManager {
       await this.client.session.promptAsync({
         path: { id: session.parentSessionId },
         body: {
+          messageID: `msg_${session.id}_exited`,
           parts: [{ type: 'text', text: message }],
           ...(session.parentAgent ? { agent: session.parentAgent } : {}),
           ...modelContext,

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { manager, registerRawOutputCallback } from '../src/plugin/pty/manager.ts'
-import { ManagedTestServer } from './utils.ts'
+import { ManagedTestServer, testCommand } from './utils.ts'
 
 describe('PTY Echo Behavior', () => {
   let managedTestServer: ManagedTestServer
@@ -35,8 +35,7 @@ describe('PTY Echo Behavior', () => {
     // Spawn interactive bash session
     const session = manager.spawn({
       title,
-      command: 'echo',
-      args: ['Hello World'],
+      ...testCommand('echo', ['Hello World']),
       description: 'Echo test session',
       parentSessionId: 'test',
     })
@@ -70,8 +69,7 @@ describe('PTY Echo Behavior', () => {
     // Spawn interactive bash session
     const session = manager.spawn({
       title,
-      command: 'bash',
-      args: [],
+      ...testCommand('bash'),
       description: 'Echo test session',
       parentSessionId: 'test',
     })

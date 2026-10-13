@@ -47,6 +47,26 @@ jobs:
       - name: Run quality step
         run: bun ${{matrix.quality}}
 
+  windows:
+    name: Windows integration
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: bun ci
+      - run: bun build:prod
+      - run: bun typecheck
+      - run: bun lint
+      - run: bun format
+      - run: bun unittest
+      - run: bunx playwright install chromium firefox
+      - run: bun test:browser
+
   dependency-review:
     runs-on: ubuntu-24.04
     if: github.event_name == 'pull_request'
@@ -68,7 +88,8 @@ jobs:
       - name: Install Determinate Nix
         uses: DeterminateSystems/determinate-nix-action@v3
       - name: Install devenv
-        run: nix profile add nixpkgs#devenv
+        # Keep devenv compatible with the locked modules (upstream b6c2067).
+        run: nix profile add 'github:NixOS/nixpkgs/bb11e50a8843e245cd8400e1ae3823bd6f64cc9c#devenv'
       - name: Cache Bun dependencies
         uses: actions/cache@v5
         with:

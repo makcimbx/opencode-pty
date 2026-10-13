@@ -121,12 +121,14 @@ export class SessionLifecycleManager {
     onExit: (session: PTYSession, exitCode: number | null) => void
   ): void {
     session.process?.onData((data: string) => {
+      if (this.sessions.get(session.id) !== session) return
       session.buffer.append(data)
       session.snapshot.write(data)
       onData(session, data)
     })
 
     session.process?.onExit(({ exitCode, signal }) => {
+      if (this.sessions.get(session.id) !== session) return
       this.clearSessionTimeout(session.id)
 
       // Flush any remaining incomplete line in the buffer
@@ -138,6 +140,7 @@ export class SessionLifecycleManager {
         session.status = 'exited'
       }
       session.exitCode = exitCode
+      session.exitAt = new Date()
       session.exitSignal = signal
       onExit(session, exitCode)
     })
@@ -149,7 +152,12 @@ export class SessionLifecycleManager {
     onExit: (session: PTYSession, exitCode: number | null) => void
   ): PTYSessionInfo {
     const session = this.createSessionObject(opts)
-    this.spawnProcess(session)
+    try {
+      this.spawnProcess(session)
+    } catch (error) {
+      session.snapshot.dispose()
+      throw error
+    }
     this.setupEventHandlers(session, onData, onExit)
     this.sessions.set(session.id, session)
     this.scheduleSessionTimeout(session)
@@ -164,6 +172,9 @@ export class SessionLifecycleManager {
 
     this.clearSessionTimeout(id)
 
+    // Native kill may invoke onExit synchronously; cleanup must never resume chat.
+    if (cleanup) session.notifyOnExit = false
+
     if (session.status === 'running') {
       session.status = 'killing'
       try {
@@ -175,6 +186,7 @@ export class SessionLifecycleManager {
 
     if (cleanup) {
       session.buffer.clear()
+      session.snapshot.dispose()
       this.sessions.delete(id)
     }
 
@@ -225,6 +237,7 @@ export class SessionLifecycleManager {
       exitSignal: session.exitSignal,
       pid: session.pid,
       createdAt: session.createdAt.toISOString(),
+      exitAt: session.exitAt?.toISOString(),
       lineCount: session.buffer.length,
       size: snapshot.size,
     }

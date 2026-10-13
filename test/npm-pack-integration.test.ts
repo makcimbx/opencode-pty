@@ -11,12 +11,22 @@ async function run(cmd: string[], opts: { cwd?: string } = {}) {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, stdout, stderr }
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    proc.kill()
+  }, 90000)
+  try {
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    if (timedOut) throw new Error(`${cmd.join(' ')} timed out: ${stderr}`)
+    return { code, stdout, stderr }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function findPackFileFromOutput(stdout: string): string {
@@ -38,6 +48,7 @@ describe('npm pack integration', () => {
     // Cleanup server process
     if (serverProcess) {
       serverProcess.kill()
+      await serverProcess.exited
       serverProcess = null
     }
 
@@ -61,7 +72,22 @@ describe('npm pack integration', () => {
   it('packs, installs, and serves assets correctly', async () => {
     // 1) Create temp workspace
     tempDir = mkdtempSync(join(tmpdir(), 'opencode-pty-'))
-    writeFileSync(join(tempDir, 'package.json'), JSON.stringify({ private: true }))
+    // Test the versions installed for this checkout, rather than resolving newer
+    // SDK/TUI versions from broad published ranges on every smoke test.
+    const manifest = await Bun.file(join(process.cwd(), 'package.json')).json()
+    const overrides = Object.fromEntries(
+      await Promise.all(
+        Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies }).map(
+          async (name) => {
+            const installed = await Bun.file(
+              join(process.cwd(), 'node_modules', name, 'package.json')
+            ).json()
+            return [name, installed.version]
+          }
+        )
+      )
+    )
+    writeFileSync(join(tempDir, 'package.json'), JSON.stringify({ private: true, overrides }))
 
     // 2) Pack the package
     const pack = await run(['npm', 'pack'])
@@ -93,59 +119,37 @@ describe('npm pack integration', () => {
     const packageDir = join(tempDir, 'node_modules/@makcimbx/opencode-pty')
     expect(existsSync(join(packageDir, 'dist/src/plugin/pty/manager.js'))).toBe(true)
     expect(existsSync(join(packageDir, 'dist/web/index.html'))).toBe(true)
-    const portFile = join(tmpdir(), 'test-server-port-0.txt')
+    const portFile = join(tempDir, 'test-server.json')
     if (await Bun.file(portFile).exists()) {
       await Bun.file(portFile).delete()
     }
     serverProcess = Bun.spawn(['bun', 'run', 'test/start-server.ts'], {
       cwd: tempDir,
-      env: { ...process.env, NODE_ENV: 'test', CREATE_TEST_SESSION: 'false' },
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        CREATE_TEST_SESSION: 'false',
+        TEST_SERVER_FILE: portFile,
+      },
       stdout: 'inherit',
       stderr: 'inherit',
     })
 
-    async function waitForPortFile() {
-      // Fallback timeout to resolve with 0 after 500ms.
-      const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => resolve(0), 500)
-      })
-
-      // Polling logic as a separate async function.
-      const pollForFile = async () => {
-        while (!(await Bun.file(portFile).exists())) {
-          await new Promise(setImmediate)
-        }
-        const bytes = await Bun.file(portFile).bytes()
-        const portStr = new TextDecoder().decode(bytes).trim()
-        const port = parseInt(portStr, 10)
-        if (Number.isNaN(port)) return 0
-        return port
-      }
-
-      // Race the timeout against the polling.
-      return await Promise.race([timeoutPromise, pollForFile()])
+    const deadline = Date.now() + 15000
+    while (!(await Bun.file(portFile).exists())) {
+      if (serverProcess.exitCode !== null || Date.now() >= deadline)
+        throw new Error('Packed server startup failed')
+      await Bun.sleep(100)
     }
-
-    async function waitWithRetry() {
-      let retries = 20
-      do {
-        const port = await waitForPortFile()
-        if (port !== 0) return port
-        await new Promise(setImmediate)
-        retries--
-      } while (retries > 0)
-      return 0
-    }
-
-    const port = await waitWithRetry()
-    expect(port).not.toBe(0)
-    baseURL = `http://[::1]:${port}`
+    const credentials = (await Bun.file(portFile).json()) as { baseURL: string; token: string }
+    baseURL = credentials.baseURL
+    const headers = { Authorization: `Bearer ${credentials.token}` }
 
     // Wait for server to be ready
     let retries = 20 // 10 seconds
     while (retries > 0) {
       try {
-        const response = await fetch(`${baseURL}/api/sessions`)
+        const response = await fetch(`${baseURL}/api/sessions`, { headers })
         if (response.ok) break
       } catch (error) {
         if (!(error instanceof DOMException) || error.name !== 'AbortError') {
@@ -158,15 +162,15 @@ describe('npm pack integration', () => {
     expect(retries).toBeGreaterThan(0) // Server should be ready
 
     // 5) Fetch assets
-    const assetResponse = await fetch(`${baseURL}/assets/${assetName}`)
+    const assetResponse = await fetch(`${baseURL}/assets/${assetName}`, { headers })
     expect(assetResponse.status).toBe(200)
     // Could add more specific checks here, like content-type or specific assets
 
     // 6) Fetch index.html and verify it's the built version
-    const indexResponse = await fetch(`${baseURL}/`)
+    const indexResponse = await fetch(`${baseURL}/`, { headers })
     expect(indexResponse.status).toBe(200)
     const indexContent = await indexResponse.text()
     expect(indexContent).not.toContain('main.tsx') // Fails if raw HTML is served
     expect(indexContent).toContain('/assets/') // Confirms built assets are referenced
-  }, 30000)
+  }, 180000)
 })

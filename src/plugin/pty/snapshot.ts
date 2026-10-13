@@ -50,6 +50,7 @@ export interface SnapshotDiff {
 }
 
 export interface WaitCondition {
+  signal?: AbortSignal
   /** RegExp to match against screen text. Resolves on first match. */
   search?: RegExp
   /** RegExp that must no longer match the screen text. Resolves on first absence. */
@@ -99,6 +100,14 @@ export class TerminalSnapshot {
   private seq = 0
   private history: HistoryFrame[] = []
   private historyCapacity: number
+  private readonly controller = new AbortController()
+
+  dispose(): void {
+    if (this.controller.signal.aborted) return
+    this.controller.abort()
+    // Let queued writes settle before disposing xterm's parser.
+    void this.pendingWrite.finally(() => this.terminal.dispose())
+  }
 
   constructor(
     cols: number,
@@ -124,6 +133,7 @@ export class TerminalSnapshot {
    * cached state is always built from fully-parsed output.
    */
   write(data: string): void {
+    if (this.controller.signal.aborted) return
     this.pendingWrite = this.pendingWrite
       .then(
         () =>
@@ -149,6 +159,19 @@ export class TerminalSnapshot {
   async getSettledState(): Promise<SnapshotState> {
     await this.pendingWrite
     return this.cachedState
+  }
+
+  /** Rendered scrollback for viewers; snapshot/diff tools stay viewport-based. */
+  async getSettledText(limit = 300): Promise<string> {
+    await this.pendingWrite
+    if (this.controller.signal.aborted) return ''
+    const buffer = this.terminal.buffer.active
+    const lines: string[] = []
+    for (let i = Math.max(0, buffer.length - limit); i < buffer.length; i++) {
+      lines.push(buffer.getLine(i)?.translateToString(true) ?? '')
+    }
+    while (lines.at(-1) === '') lines.pop()
+    return lines.join('\n')
   }
 
   /**
@@ -201,6 +224,10 @@ export class TerminalSnapshot {
    * If multiple are provided, the first condition to match wins.
    */
   async waitForCondition(condition: WaitCondition): Promise<WaitResult> {
+    const signal = condition.signal
+      ? AbortSignal.any([condition.signal, this.controller.signal])
+      : this.controller.signal
+    signal.throwIfAborted()
     const POLL_INTERVAL_MS = 100
     const timeoutMs = condition.timeoutMs ?? 30_000
     const screenStableForMs =
@@ -258,16 +285,24 @@ export class TerminalSnapshot {
     const immediate = check()
     if (immediate) return immediate
 
-    return new Promise<WaitResult>((resolve) => {
+    return new Promise<WaitResult>((resolve, reject) => {
+      const cleanup = () => {
+        clearInterval(interval)
+        signal.removeEventListener('abort', onAbort)
+      }
+      const onAbort = () => {
+        cleanup()
+        reject(signal.reason)
+      }
       const interval = setInterval(() => {
         const result = check()
         if (result) {
-          clearInterval(interval)
+          cleanup()
           resolve(result)
           return
         }
         if (Date.now() - start >= timeoutMs) {
-          clearInterval(interval)
+          cleanup()
           resolve({
             matched: false,
             waitedMs: Date.now() - start,
@@ -275,6 +310,8 @@ export class TerminalSnapshot {
           })
         }
       }, POLL_INTERVAL_MS)
+      signal.addEventListener('abort', onAbort, { once: true })
+      if (signal.aborted) onAbort()
     })
   }
 

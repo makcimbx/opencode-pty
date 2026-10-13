@@ -18,6 +18,7 @@ export interface SessionClient {
     promptAsync(input: {
       path: { id: string }
       body: {
+        messageID?: string
         parts: Array<{ type: 'text'; text: string }>
         agent?: string
         model?: { providerID: string; modelID: string }

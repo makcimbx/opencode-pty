@@ -1,5 +1,5 @@
 import { tool } from '@opencode-ai/plugin'
-import { manager } from '../manager.ts'
+import { getManager } from '../manager.ts'
 import { checkCommandPermission } from '../permissions.ts'
 import { buildSessionNotFoundError } from '../utils.ts'
 import DESCRIPTION from './write.txt'
@@ -60,6 +60,7 @@ export const ptyWrite = tool({
     data: tool.schema.string().describe('The input data to send to the PTY'),
   },
   async execute(args) {
+    const manager = getManager()
     const session = manager.get(args.id)
     if (!session) {
       throw buildSessionNotFoundError(args.id)

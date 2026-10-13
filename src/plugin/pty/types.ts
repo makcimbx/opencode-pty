@@ -17,6 +17,7 @@ export interface PTYSession {
   exitSignal?: number | string
   pid: number
   createdAt: Date
+  exitAt?: Date
   parentSessionId: string
   parentAgent?: string
   notifyOnExit: boolean
@@ -44,6 +45,7 @@ export interface PTYSessionInfo {
   exitSignal?: number | string
   pid: number
   createdAt: string
+  exitAt?: string
   lineCount: number
   size?: SnapshotState['size']
 }

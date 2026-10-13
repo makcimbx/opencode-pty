@@ -1,6 +1,6 @@
 import { tool } from '@opencode-ai/plugin'
 import { formatSnapshotDiffLines } from '../formatters.ts'
-import { manager } from '../manager.ts'
+import { getManager } from '../manager.ts'
 import { buildSessionNotFoundError } from '../utils.ts'
 import DESCRIPTION from './snapshot-wait.txt'
 
@@ -35,7 +35,8 @@ export const ptySnapshotWait = tool({
         'Sequence number used only to format the returned snapshot as a diff against that seq. Does not affect when the wait resolves.'
       ),
   },
-  async execute(args) {
+  async execute(args, context) {
+    const manager = getManager()
     const search = args.search?.trim() || undefined
     const searchAbsent = args.searchAbsent?.trim() || undefined
     const screenStableForMs =
@@ -54,6 +55,7 @@ export const ptySnapshotWait = tool({
       searchAbsent: searchAbsent != null ? new RegExp(searchAbsent) : undefined,
       screenStableForMs,
       timeoutMs: args.timeout,
+      signal: context?.abort,
     })
 
     if (!result) {

@@ -47,6 +47,10 @@ describe('npm pack structure', () => {
 
     // 3) Validate required files exist; NPM tarballs use 'package/' prefix
     expect(files).toContain('package/dist/web/index.html')
+    expect(files).toContain('package/dist/index.js')
+    expect(files).toContain('package/dist/src/plugin/v2.js')
+    expect(files).toContain('package/dist/src/tui/index.js')
+    expect(files).toContain('package/dist/src/plugin/pty/rpc.js')
 
     // At least one hashed JS and CSS asset
     const hasJsAsset = files.some((f) => /package\/dist\/web\/assets\/[^/]+\.js$/.test(f))

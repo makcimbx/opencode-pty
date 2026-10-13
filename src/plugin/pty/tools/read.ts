@@ -1,5 +1,5 @@
 import { tool } from '@opencode-ai/plugin'
-import { manager } from '../manager.ts'
+import { getManager } from '../manager.ts'
 import { DEFAULT_READ_LIMIT, MAX_LINE_LENGTH } from '../../../shared/constants.ts'
 import { buildSessionNotFoundError } from '../utils.ts'
 import { formatLine } from '../formatters.ts'
@@ -129,7 +129,7 @@ function handlePatternRead(
 ): string {
   const regex = validateAndCreateRegex(pattern, ignoreCase)
 
-  const result = manager.search(id, regex, offset, limit)
+  const result = getManager().search(id, regex, offset, limit)
   if (!result) {
     throw buildSessionNotFoundError(id)
   }
@@ -182,7 +182,7 @@ function handlePlainRead(
   offset: number,
   limit: number
 ): string {
-  const result = manager.read(args.id, offset, limit)
+  const result = getManager().read(args.id, offset, limit)
   if (!result) {
     throw buildSessionNotFoundError(args.id)
   }
@@ -267,6 +267,7 @@ export const ptyRead = tool({
       .describe('Case-insensitive pattern matching (default: false)'),
   },
   async execute(args) {
+    const manager = getManager()
     const session = manager.get(args.id)
     if (!session) {
       throw buildSessionNotFoundError(args.id)

@@ -1,6 +1,6 @@
 import { tool } from '@opencode-ai/plugin'
-import { manager } from '../manager.ts'
-import { checkCommandPermission, checkWorkdirPermission } from '../permissions.ts'
+import { getManager } from '../manager.ts'
+import { checkCommandPermission, checkWorkdirPermission, defaultWorkdir } from '../permissions.ts'
 import DESCRIPTION from './spawn.txt'
 
 const NOTIFY_ON_EXIT_INSTRUCTIONS = [
@@ -47,11 +47,11 @@ export const ptySpawn = tool({
       ),
   },
   async execute(args, ctx) {
+    const manager = getManager()
     await checkCommandPermission(args.command, args.args ?? [])
 
-    if (args.workdir) {
-      await checkWorkdirPermission(args.workdir)
-    }
+    const workdir = defaultWorkdir(args.workdir ?? ctx.directory)
+    await checkWorkdirPermission(workdir)
 
     const sessionId = ctx.sessionID
     const notificationSuppressed =
@@ -59,7 +59,7 @@ export const ptySpawn = tool({
     const info = manager.spawn({
       command: args.command,
       args: args.args,
-      workdir: args.workdir,
+      workdir,
       env: args.env,
       title: args.title,
       description: args.description,

@@ -1,17 +1,13 @@
-import {
-  registerRawOutputCallback,
-  registerSessionUpdateCallback,
-  removeRawOutputCallback,
-  removeSessionUpdateCallback,
-} from '../../plugin/pty/manager'
+import { getManager } from '../../plugin/pty/manager'
 import type { PTYSessionInfo } from '../../plugin/pty/types'
 import type { WSMessageServerSessionUpdate, WSMessageServerRawData } from '../shared/types'
 
 export class CallbackManager implements Disposable {
+  private readonly manager = getManager()
   constructor(private server: Bun.Server<undefined>) {
     this.server = server
-    registerSessionUpdateCallback(this.sessionUpdateCallback)
-    registerRawOutputCallback(this.rawOutputCallback)
+    this.manager.sessionUpdateCallbacks.push(this.sessionUpdateCallback)
+    this.manager.rawOutputCallbacks.push(this.rawOutputCallback)
   }
 
   private sessionUpdateCallback = (session: PTYSessionInfo): void => {
@@ -25,7 +21,9 @@ export class CallbackManager implements Disposable {
   };
 
   [Symbol.dispose]() {
-    removeSessionUpdateCallback(this.sessionUpdateCallback)
-    removeRawOutputCallback(this.rawOutputCallback)
+    const updateIndex = this.manager.sessionUpdateCallbacks.indexOf(this.sessionUpdateCallback)
+    if (updateIndex !== -1) this.manager.sessionUpdateCallbacks.splice(updateIndex, 1)
+    const outputIndex = this.manager.rawOutputCallbacks.indexOf(this.rawOutputCallback)
+    if (outputIndex !== -1) this.manager.rawOutputCallbacks.splice(outputIndex, 1)
   }
 }

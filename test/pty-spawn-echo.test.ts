@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { ptySpawn } from '../src/plugin/pty/tools/spawn.ts'
 import { manager, registerRawOutputCallback } from '../src/plugin/pty/manager.ts'
-import { ManagedTestServer } from './utils.ts'
+import { ManagedTestServer, testCommand } from './utils.ts'
 
 describe('ptySpawn Integration', () => {
   let managedTestServer: ManagedTestServer
@@ -35,8 +35,7 @@ describe('ptySpawn Integration', () => {
 
     const result = await ptySpawn.execute(
       {
-        command: 'echo',
-        args: ['Hello World'],
+        ...testCommand('echo', ['Hello World']),
         title,
         description: 'Integration test for echo',
       },
@@ -47,13 +46,13 @@ describe('ptySpawn Integration', () => {
         abort: new AbortController().signal,
         metadata: () => {},
         ask: async () => {},
-        directory: '/tmp',
-        worktree: '/tmp',
+        directory: process.cwd(),
+        worktree: process.cwd(),
       }
     )
 
     expect(result).toContain('<pty_spawned>')
-    expect(result).toContain('Command: echo Hello World')
+    expect(result).toContain(`Command: ${testCommand('echo', ['Hello World']).command}`)
     expect(result).toContain('Status: running')
 
     const sessionIdMatch = result.match(/ID: (.+)/)

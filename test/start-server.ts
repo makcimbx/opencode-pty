@@ -23,12 +23,17 @@ if (process.env.NODE_ENV === 'test') {
     throw new Error('Unix sockets not supported. File an issue if you need this feature.')
   }
   await Bun.write(
-    join(tmpdir(), `test-server-port-${workerIndex}.txt`),
-    server.server.port.toString()
+    process.env.TEST_SERVER_FILE ?? join(tmpdir(), `test-server-port-${workerIndex}.json`),
+    JSON.stringify({
+      baseURL: server.server.url.origin,
+      token: server.auth.token,
+    })
   )
 }
 
-const api = createApiClient(server.server.url.origin)
+const api = createApiClient(server.server.url.origin, {
+  Authorization: `Bearer ${server.auth.token}`,
+})
 
 // Health check for test mode
 if (process.env.NODE_ENV === 'test' && process.env.CREATE_TEST_SESSION !== 'false') {
@@ -54,7 +59,7 @@ if (process.env.NODE_ENV === 'test' && process.env.CREATE_TEST_SESSION !== 'fals
 }
 
 // Create test sessions for manual testing and e2e tests
-if (process.env.NODE_ENV === 'test') {
+if (process.env.NODE_ENV === 'test' && process.env.CREATE_TEST_SESSION !== 'false') {
   // Create an interactive bash session for e2e tests
   manager.spawn({
     command: 'bash',
@@ -62,7 +67,7 @@ if (process.env.NODE_ENV === 'test') {
     description: 'Interactive bash session for e2e tests',
     parentSessionId: 'test-session',
   })
-} else if (process.env.CI !== 'true') {
+} else if (process.env.NODE_ENV !== 'test' && process.env.CI !== 'true') {
   manager.spawn({
     command: 'bash',
     args: [

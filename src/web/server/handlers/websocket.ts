@@ -1,6 +1,10 @@
 import type { ServerWebSocket } from 'bun'
-import { manager } from '../../../plugin/pty/manager'
-import { checkCommandPermission, checkWorkdirPermission } from '../../../plugin/pty/permissions'
+import { getManager } from '../../../plugin/pty/manager'
+import {
+  checkCommandPermission,
+  checkWorkdirPermission,
+  defaultWorkdir,
+} from '../../../plugin/pty/permissions'
 import {
   type WSMessageServerSessionList,
   type WSMessageClientSubscribeSession,
@@ -19,7 +23,7 @@ import {
 
 class WebSocketHandler {
   private sendSessionList(ws: ServerWebSocket<undefined>): void {
-    const sessions = manager.list()
+    const sessions = getManager().list()
     const message: WSMessageServerSessionList = { type: 'session_list', sessions }
     ws.send(JSON.stringify(message))
   }
@@ -28,7 +32,7 @@ class WebSocketHandler {
     ws: ServerWebSocket<undefined>,
     message: WSMessageClientSubscribeSession
   ): void {
-    const session = manager.get(message.sessionId)
+    const session = getManager().get(message.sessionId)
     if (!session) {
       const error: WSMessageServerError = {
         type: 'error',
@@ -128,11 +132,10 @@ class WebSocketHandler {
   private async handleSpawn(ws: ServerWebSocket<undefined>, message: WSMessageClientSpawnSession) {
     try {
       await checkCommandPermission(message.command, message.args ?? [])
-      if (message.workdir) {
-        await checkWorkdirPermission(message.workdir)
-      }
+      const workdir = defaultWorkdir(message.workdir)
+      await checkWorkdirPermission(workdir)
 
-      const sessionInfo = manager.spawn(message)
+      const sessionInfo = getManager().spawn({ ...message, workdir, parentSessionId: 'web-api' })
       if (message.subscribe) {
         this.handleSubscribe(ws, { type: 'subscribe', sessionId: sessionInfo.id })
       }
@@ -146,11 +149,11 @@ class WebSocketHandler {
   }
 
   private handleInput(message: WSMessageClientInput) {
-    manager.write(message.sessionId, message.data)
+    getManager().write(message.sessionId, message.data)
   }
 
   private handleReadRaw(ws: ServerWebSocket<undefined>, message: WSMessageClientReadRaw) {
-    const rawData = manager.getRawBuffer(message.sessionId)
+    const rawData = getManager().getRawBuffer(message.sessionId)
     if (!rawData) {
       const error: WSMessageServerError = {
         type: 'error',

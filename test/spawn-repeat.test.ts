@@ -7,6 +7,7 @@ import {
   registerRawOutputCallback,
 } from '../src/plugin/pty/manager.ts'
 import type { Subprocess } from 'bun'
+import { testCommand } from './utils.ts'
 
 function positiveIntFromEnv(name: string, fallback: number): number {
   const value = process.env[name]
@@ -155,8 +156,7 @@ describe('PTY Echo Behavior', () => {
       // Spawn interactive bash session
       const session = manager.spawn({
         title: title,
-        command: 'echo',
-        args: ['Hello World'],
+        ...testCommand('echo', ['Hello World']),
         description: 'Echo test session',
         parentSessionId: 'test',
       })

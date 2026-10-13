@@ -25,6 +25,7 @@ type ApiFetchOptions<
   params?: ExtractParams<Route['path']>
   body?: Method extends 'POST' ? unknown : never
   baseUrl?: string
+  headers?: HeadersInit
 }
 
 // Build URL by replacing path parameters
@@ -46,9 +47,11 @@ export async function apiFetch<
   const baseUrl = options.baseUrl || `${location.protocol}//${location.host}`
   const url = baseUrl + buildUrl(route.path, options.params)
 
+  const headers = new Headers(options.headers)
+  headers.set('Content-Type', 'application/json')
   const fetchOptions: RequestInit = {
     method: options.method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
   }
 
   if (options.body && options.method === 'POST') {
@@ -72,13 +75,14 @@ export async function apiFetchJson<
 }
 
 // Factory function to create API client with fixed baseUrl (for tests)
-export function createApiClient(baseUrl: string) {
+export function createApiClient(baseUrl: string, headers?: HeadersInit) {
   return {
     sessions: {
       list: () =>
         apiFetchJson<typeof routes.sessions, 'GET', PTYSessionInfo[]>(routes.sessions, {
           method: 'GET',
           baseUrl,
+          headers,
         }),
 
       create: (body: {
@@ -92,12 +96,14 @@ export function createApiClient(baseUrl: string) {
           method: 'POST',
           body,
           baseUrl,
+          headers,
         }),
 
       clear: () =>
         apiFetchJson<typeof routes.sessions, 'DELETE', { success: boolean }>(routes.sessions, {
           method: 'DELETE',
           baseUrl,
+          headers,
         }),
     },
 
@@ -107,6 +113,7 @@ export function createApiClient(baseUrl: string) {
           method: 'GET',
           params,
           baseUrl,
+          headers,
         }),
 
       kill: (params: { id: string }) =>
@@ -114,18 +121,19 @@ export function createApiClient(baseUrl: string) {
           method: 'DELETE',
           params,
           baseUrl,
+          headers,
         }),
 
       input: (params: { id: string }, body: { data: string }) =>
         apiFetchJson<typeof routes.session.input, 'POST', { success: boolean }>(
           routes.session.input,
-          { method: 'POST', params, body, baseUrl }
+          { method: 'POST', params, body, baseUrl, headers }
         ),
 
       cleanup: (params: { id: string }) =>
         apiFetchJson<typeof routes.session.cleanup, 'DELETE', { success: boolean }>(
           routes.session.cleanup,
-          { method: 'DELETE', params, baseUrl }
+          { method: 'DELETE', params, baseUrl, headers }
         ),
 
       buffer: {
@@ -134,14 +142,14 @@ export function createApiClient(baseUrl: string) {
             typeof routes.session.buffer.raw,
             'GET',
             { raw: string; byteLength: number }
-          >(routes.session.buffer.raw, { method: 'GET', params, baseUrl }),
+          >(routes.session.buffer.raw, { method: 'GET', params, baseUrl, headers }),
 
         plain: (params: { id: string }) =>
           apiFetchJson<
             typeof routes.session.buffer.plain,
             'GET',
             { plain: string; byteLength: number }
-          >(routes.session.buffer.plain, { method: 'GET', params, baseUrl }),
+          >(routes.session.buffer.plain, { method: 'GET', params, baseUrl, headers }),
       },
     },
 
@@ -149,6 +157,7 @@ export function createApiClient(baseUrl: string) {
       apiFetchJson<typeof routes.health, 'GET', HealthResponse>(routes.health, {
         method: 'GET',
         baseUrl,
+        headers,
       }),
   } as const
 }

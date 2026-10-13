@@ -1,11 +1,15 @@
-import { manager } from '../../../plugin/pty/manager.ts'
-import { checkCommandPermission, checkWorkdirPermission } from '../../../plugin/pty/permissions.ts'
+import { getManager } from '../../../plugin/pty/manager.ts'
+import {
+  checkCommandPermission,
+  checkWorkdirPermission,
+  defaultWorkdir,
+} from '../../../plugin/pty/permissions.ts'
 import type { BunRequest } from 'bun'
 import { JsonResponse, ErrorResponse } from './responses.ts'
 import type { routes } from '../../shared/routes.ts'
 
 export function getSessions() {
-  const sessions = manager.list()
+  const sessions = getManager().list()
   return new JsonResponse(sessions)
 }
 
@@ -31,16 +35,15 @@ export async function createSession(req: Request) {
   try {
     const args = body.args || []
     await checkCommandPermission(body.command, args)
-    if (body.workdir) {
-      await checkWorkdirPermission(body.workdir)
-    }
+    const workdir = defaultWorkdir(body.workdir)
+    await checkWorkdirPermission(workdir)
 
-    const session = manager.spawn({
+    const session = getManager().spawn({
       command: body.command,
       args,
       title: body.description,
       description: body.description,
-      workdir: body.workdir,
+      workdir,
       timeoutSeconds: body.timeoutSeconds,
       parentSessionId: 'web-api',
     })
@@ -54,12 +57,12 @@ export async function createSession(req: Request) {
 }
 
 export function clearSessions() {
-  manager.clearAllSessions()
+  getManager().clearAllSessions()
   return new JsonResponse({ success: true })
 }
 
 export function getSession(req: BunRequest<typeof routes.session.path>) {
-  const session = manager.get(req.params.id)
+  const session = getManager().get(req.params.id)
   if (!session) {
     return new ErrorResponse('Session not found', 404)
   }
@@ -74,7 +77,7 @@ export async function sendInput(
     if (!body.data || typeof body.data !== 'string') {
       return new ErrorResponse('Data field is required and must be a string', 400)
     }
-    const success = manager.write(req.params.id, body.data)
+    const success = getManager().write(req.params.id, body.data)
     if (!success) {
       return new ErrorResponse('Failed to write to session', 400)
     }
@@ -85,7 +88,7 @@ export async function sendInput(
 }
 
 export function cleanupSession(req: BunRequest<typeof routes.session.cleanup.path>) {
-  const success = manager.kill(req.params.id, true)
+  const success = getManager().kill(req.params.id, true)
   if (!success) {
     return new ErrorResponse('Failed to kill session', 400)
   }
@@ -93,7 +96,7 @@ export function cleanupSession(req: BunRequest<typeof routes.session.cleanup.pat
 }
 
 export function killSession(req: BunRequest<typeof routes.session.path>) {
-  const success = manager.kill(req.params.id)
+  const success = getManager().kill(req.params.id)
   if (!success) {
     return new ErrorResponse('Failed to kill session', 400)
   }
@@ -101,7 +104,7 @@ export function killSession(req: BunRequest<typeof routes.session.path>) {
 }
 
 export function getRawBuffer(req: BunRequest<typeof routes.session.buffer.raw.path>) {
-  const bufferData = manager.getRawBuffer(req.params.id)
+  const bufferData = getManager().getRawBuffer(req.params.id)
   if (!bufferData) {
     return new ErrorResponse('Session not found', 404)
   }
@@ -110,7 +113,7 @@ export function getRawBuffer(req: BunRequest<typeof routes.session.buffer.raw.pa
 }
 
 export function getPlainBuffer(req: BunRequest<typeof routes.session.buffer.plain.path>) {
-  const snapshot = manager.snapshot(req.params.id)
+  const snapshot = getManager().snapshot(req.params.id)
   if (!snapshot) {
     return new ErrorResponse('Session not found', 404)
   }
