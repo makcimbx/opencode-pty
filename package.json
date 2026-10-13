@@ -3,7 +3,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.js",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "OpenCode plugin for interactive PTY management with safe output, terminal snapshots, and reliable process waiting",
   "author": "makcimbx",
   "keywords": [
@@ -100,14 +100,14 @@
     "playwright-core": "1.57.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "solid-js": "1.9.15",
+    "solid-js": "1.9.12",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"
   },
   "peerDependencies": {
     "@opentui/core": ">=0.5.17",
     "@opentui/solid": ">=0.5.17",
-    "solid-js": ">=1.9.15",
+    "solid-js": ">=1.9.12",
     "typescript": "^5"
   },
   "peerDependenciesMeta": {

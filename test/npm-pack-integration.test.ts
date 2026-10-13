@@ -92,17 +92,30 @@ describe('npm pack integration', () => {
     const manifest = await Bun.file(join(process.cwd(), 'package.json')).json()
     const overrides = Object.fromEntries(
       await Promise.all(
-        Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies }).map(
-          async (name) => {
-            const installed = await Bun.file(
-              join(process.cwd(), 'node_modules', name, 'package.json')
-            ).json()
-            return [name, installed.version]
-          }
-        )
+        Object.keys(manifest.dependencies).map(async (name) => {
+          const installed = await Bun.file(
+            join(process.cwd(), 'node_modules', name, 'package.json')
+          ).json()
+          return [name, installed.version]
+        })
       )
     )
-    writeFileSync(join(tempDir, 'package.json'), JSON.stringify({ private: true, overrides }))
+    // Match the native host's TUI versions without overriding peer requirements:
+    // npm must reject incompatible ranges instead of silently forcing them.
+    const dependencies = Object.fromEntries(
+      await Promise.all(
+        ['@opentui/core', '@opentui/solid', 'solid-js'].map(async (name) => {
+          const installed = await Bun.file(
+            join(process.cwd(), 'node_modules', name, 'package.json')
+          ).json()
+          return [name, installed.version]
+        })
+      )
+    )
+    writeFileSync(
+      join(tempDir, 'package.json'),
+      JSON.stringify({ private: true, overrides, dependencies })
+    )
 
     // 2) Pack the package
     const pack = await run(['npm', 'pack'])
@@ -120,12 +133,16 @@ describe('npm pack integration', () => {
     const assetName = jsAsset?.replace('package/dist/web/assets/', '')
 
     // 3) Install in temp workspace
-    // Bun's Windows resolver intermittently stalls here in the full suite.
-    // Verify an npm installation on Windows; the packaged runtime still uses Bun.
-    const installCommand =
-      process.platform === 'win32'
-        ? ['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund', tgzPath]
-        : ['bun', 'install', tgzPath]
+    // Use npm's strict peer resolver, like OpenCode's installer, on every platform.
+    // The installed package and its native PTY runtime still execute with Bun.
+    const installCommand = [
+      'npm',
+      'install',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      tgzPath,
+    ]
     // A fresh Windows runner has no npm cache and needs time to download/extract
     // the SDK and its dependencies. Keep this bounded, separately from pack/build.
     const install = await run(installCommand, { cwd: tempDir, timeoutMs: 240000 })
