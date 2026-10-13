@@ -5,17 +5,31 @@ import { join } from 'node:path'
 
 // This test ensures the npm package can be packed, installed, and serves assets correctly
 
-async function run(cmd: string[], opts: { cwd?: string } = {}) {
+async function run(cmd: string[], opts: { cwd?: string; timeoutMs?: number } = {}) {
   const proc = Bun.spawn(cmd, {
     cwd: opts.cwd,
     stdout: 'pipe',
     stderr: 'pipe',
   })
   let timedOut = false
+  let termination: Promise<unknown> | undefined
   const timer = setTimeout(() => {
     timedOut = true
-    proc.kill()
-  }, 90000)
+    if (proc.exitCode !== null) return
+    // npm.cmd can leave node.exe holding pipes/files after its wrapper is killed.
+    // Kill only this fixture's process tree, and await termination before cleanup.
+    if (process.platform === 'win32') {
+      const kill = Bun.spawn(['taskkill', '/PID', String(proc.pid), '/T', '/F'], {
+        stdout: 'ignore',
+        stderr: 'ignore',
+      })
+      termination = kill.exited.then(() => {
+        if (proc.exitCode === null) proc.kill()
+      })
+    } else {
+      proc.kill()
+    }
+  }, opts.timeoutMs ?? 90000)
   try {
     const [stdout, stderr, code] = await Promise.all([
       new Response(proc.stdout).text(),
@@ -26,6 +40,7 @@ async function run(cmd: string[], opts: { cwd?: string } = {}) {
     return { code, stdout, stderr }
   } finally {
     clearTimeout(timer)
+    await termination
   }
 }
 
@@ -67,7 +82,7 @@ describe('npm pack integration', () => {
     if (packFile) {
       rmSync(join(process.cwd(), packFile), { force: true })
     }
-  })
+  }, 30000)
 
   it('packs, installs, and serves assets correctly', async () => {
     // 1) Create temp workspace
@@ -111,7 +126,9 @@ describe('npm pack integration', () => {
       process.platform === 'win32'
         ? ['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund', tgzPath]
         : ['bun', 'install', tgzPath]
-    const install = await run(installCommand, { cwd: tempDir })
+    // A fresh Windows runner has no npm cache and needs time to download/extract
+    // the SDK and its dependencies. Keep this bounded, separately from pack/build.
+    const install = await run(installCommand, { cwd: tempDir, timeoutMs: 240000 })
     expect(install.code).toBe(0)
 
     // Copy the server script to tempDir
@@ -178,5 +195,5 @@ describe('npm pack integration', () => {
     const indexContent = await indexResponse.text()
     expect(indexContent).not.toContain('main.tsx') // Fails if raw HTML is served
     expect(indexContent).toContain('/assets/') // Confirms built assets are referenced
-  }, 180000)
+  }, 360000)
 })
